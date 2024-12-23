@@ -4,7 +4,9 @@
 ### So i got extremely bored over the holidays and decided to just make a fun project to see if its possible to automate the kind of content i was seeing on TikTok
 
 ## A simple brain rot generator just by inserting your reddit url
-[![Watch the video](images/thumbnail.png)](assets/parkour_test.mp4)
+
+## Example
+[![Watch the video](images/thumbnail.png)](https://youtube.com/shorts/CRhbay8YvBg)
 
 
 ## How it works 
@@ -26,7 +28,7 @@ and you are good to go!
 
 ## Others:
 ### Why is there no requirements.txt? 
-1. I installed the script on my personal venv so if i were to make a pip it would be very messy (and I am too lazy to do that)
+I installed the script on my personal venv so if i were to make a pip it would be very messy (and I am too lazy to do that)  ~ in general just follow the instructs on how to run it above and it should be good
 
 ### Are there any future updates?
 So far , yes there are but it is to hopefully create website or gradio to make this more user friendly, furthermore to hopefully create more brain rot videos in the future (i am looking at OpenSora but no plans as of now)
