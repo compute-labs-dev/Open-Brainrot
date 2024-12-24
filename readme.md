@@ -2,6 +2,12 @@
 ![Logo](images/logo.jpg) 
 <Created with Imagen 3>
 
+## Updates:
+Thank you everyone for the support so far albeit the r/learnmachinelearning community! In short here are some future updates I would be doing overtime
+1. Readjusting the text and font
+2. Adding k-ranking sentiments using VADER (A feature I would introduce in the later stages)
+3. Adding parallel compute (Very much in the future)
+
 ### So i got extremely bored over the holidays and decided to just make a fun project to see if its possible to automate the kind of content i was seeing on TikTok
 
 ## A simple brain rot generator just by inserting your reddit url
