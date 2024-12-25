@@ -7,7 +7,7 @@ import subprocess
 def audio(text_file_path, file_path="audio/output.wav", speaker_wav="assets/trump.mp3"):
     device = "cuda" if torch.cuda.is_available() else "cpu"
     # Read the text from the file
-    with open(text_file_path, 'r') as file:
+    with open(text_file_path, 'r', encoding='utf-8') as file:
         text = file.read().strip()
     # Init TTS
     tts = TTS("tts_models/multilingual/multi-dataset/xtts_v2").to(device)
