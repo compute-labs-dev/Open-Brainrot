@@ -3,16 +3,23 @@ from audio import *
 from force_alignment import * 
 from dict import * 
 from video_generator import * 
+from search import *
 
-
-def main(reddit_url, scraped_url = 'texts/scraped_url.txt', output_pre = 'texts/processed_output.txt', \
+def main(reddit_url, llm  = False, scraped_url = 'texts/scraped_url.txt', output_pre = 'texts/processed_output.txt', \
           final_output = 'texts/oof.txt',speech_final = 'audio/output_converted.wav', subtitle_path = 'texts/testing.ass', \
             output_path = 'final/final.mp4',speaker_wav="assets/trump.mp3", video_path = 'assets/subway.mp4'):
     print("L1: SCRAPING RIGHT NOW")
-    map_request = scrape(reddit_url)
+    if not llm:
+        map_request = scrape(reddit_url)
+    else:
+        print("Using LLM to determine best thread to scrape")
+        print("-------------------")
+        reddit_scrape = scrape_llm(reddit_url)
+        text = vader(reddit_scrape)
+        api = input("Please input the API key\n")
+        map_request= groq(text, api) 
+    print(map_request)
     save_map_to_txt(map_request,scraped_url)
-
-
     # ## AUDIO CONVERSION 
     print("L2: AUDIO CONVERSION NOW (TAKES THE LONGEST)")
     audio(scraped_url, speaker_wav = speaker_wav)
@@ -46,4 +53,4 @@ def main(reddit_url, scraped_url = 'texts/scraped_url.txt', output_pre = 'texts/
     print("DONE! SAVED AT " + output_path)
 if __name__ == "__main__":
     test_url = input("Input URL")
-    main(test_url, speaker_wav = "assets/default.mp3", video_path = 'assets/subway.mp4')
+    main(test_url, llm = True, speaker_wav = "assets/default.mp3", video_path = 'assets/subway.mp4')

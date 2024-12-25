@@ -30,7 +30,7 @@ def clean_text(text):
 def process_text(input_filename, output_filename):
     try:
         # Read the input text from the file
-        with open(input_filename, 'r') as input_file:
+        with open(input_filename, 'r', encoding = 'utf-8') as input_file:
             text = input_file.read()
 
         # Remove punctuation
@@ -59,12 +59,13 @@ def process_text_section2(input_file_path, output_file_path):
     p = inflect.engine()
     
     # Ensure that the encoding here is kept at iso-8859-1 so that it can take in broader range of characters
-    with open(input_file_path, 'r', encoding='iso-8859-1') as file:
-        text = file.read()
-
+    try:
+        with open(input_file_path, 'r', encoding='utf-8') as file:
+            text = file.read()
+    except: 
+        raise TypeError
     # Split text into words
     words = text.split()
-
     def convert_number(word):
         # Store original for returning if not a match
         original_word = word
