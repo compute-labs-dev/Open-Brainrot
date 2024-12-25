@@ -43,7 +43,7 @@ There are mainly 6 important scripts within this, each deliberately separated so
 
 ### Pre-requisites:
 1. PyTorch (with CUDA 12.4)
-2. Conqui TTS ([Link](https://github.com/coqui-ai/TTS))
+2. Coqui TTS ([Link](https://github.com/coqui-ai/TTS))
 3. FFMpeg ([Link](https://www.ffmpeg.org/))
 
 Afterwards, just run the script 
@@ -61,7 +61,7 @@ So far , yes there are but it is to hopefully create website or gradio to make t
 
 
 ## Thanks:
-I would like to thank Motu Hira for creatig this tutorial on Forced Alignment using Wav2Vec2. Without this, the subtitles would not be able to work (the original plan was to use CMUSphinx but the lack of community support made it difficult for me to work with)
+I would like to thank Motu Hira for creating this tutorial on Forced Alignment using Wav2Vec2. Without this, the subtitles would not be able to work (the original plan was to use CMUSphinx but the lack of community support made it difficult for me to work with)
 
 Here is the original Tutorial if anyone is interested: 
 

@@ -31,3 +31,4 @@ def add_subtitles_and_overlay_audio(video_path, audio_path, subtitles_path, outp
     ]
     subprocess.run(command, check=True)
 
+trim_video('assets/subway.mp4','assets/trimed.mp4', duration = 120)
