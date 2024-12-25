@@ -9,6 +9,7 @@ Thank you everyone for the support so far albeit the r/learnmachinelearning && r
 3. Adding parallel compute (Very much in the future)
 4. Add support for generative image and video in the future
 5. Create CLI interface or fully functional website
+6. Update readme for LLM scraping feature!
 
 
 ## New Updates!!:
