@@ -3,7 +3,7 @@
 <Created with Imagen 3>
 
 ## Updates:
-Thank you everyone for the support so far albeit the r/learnmachinelearning community! In short here are some future updates I would be doing overtime
+Thank you everyone for the support so far albeit the r/learnmachinelearning && r/machinelearning community! In short here are some future updates I would be doing overtime
 1. Readjusting the text and font :white_check_mark:
 2. Adding k-ranking sentiments using VADER  :white_check_mark:
 3. Adding parallel compute (Very much in the future)
