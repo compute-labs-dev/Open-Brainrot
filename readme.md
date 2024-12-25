@@ -4,9 +4,21 @@
 
 ## Updates:
 Thank you everyone for the support so far albeit the r/learnmachinelearning community! In short here are some future updates I would be doing overtime
-1. Readjusting the text and font
-2. Adding k-ranking sentiments using VADER (A feature I would introduce in the later stages)
+1. Readjusting the text and font :white_check_mark:
+2. Adding k-ranking sentiments using VADER  :white_check_mark:
 3. Adding parallel compute (Very much in the future)
+4. Add support for generative image and video in the future
+5. Create CLI interface or fully functional website
+
+
+## New Updates!!:
+I have made a series of new updates in particular:
+1. ** I integrated a feature that allows an LLM of your choice to choose the thread for you using VADAR and sentiment analysis (The LLM used is llama-3.3 70b-versatile via Groq but I do intend on adding llama cpp support in the future!) VADAR is used to cut down on the threads due to context window for llama 3.3
+
+2. I have fixed the text so now texts are reproduced in the middle instead!
+
+3. Fixed certain bugs whereby in pre-processing stages it is unable to read file due to encoding issues 
+
 
 ### So i got extremely bored over the holidays and decided to just make a fun project to see if its possible to automate the kind of content i was seeing on TikTok
 
