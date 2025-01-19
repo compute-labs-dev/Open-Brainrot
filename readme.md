@@ -8,18 +8,16 @@ Thank you everyone for the support so far albeit the r/learnmachinelearning && r
 2. Adding k-ranking sentiments using VADER  :white_check_mark:
 3. Adding parallel compute (Very much in the future)
 4. Add support for generative image and video in the future
-5. Create CLI interface or fully functional website
-6. Update readme for LLM scraping feature!
+5. Create CLI interface or fully functional website :white_check_mark:
+6. Update readme for LLM scraping feature! :white_check_mark:
 
 
 ## New Updates!!:
-I have made a series of new updates in particular:
-1. ** I integrated a feature that allows an LLM of your choice to choose the thread for you using VADAR and sentiment analysis (The LLM used is llama-3.3 70b-versatile via Groq but I do intend on adding llama cpp support in the future!) VADAR is used to cut down on the threads due to context window for llama 3.3
 
-2. I have fixed the text so now texts are reproduced in the middle instead!
+### UI Interface has finally been created!
+![UI Interface](images/ui.png)
 
-3. Fixed certain bugs whereby in pre-processing stages it is unable to read file due to encoding issues 
-
+To facilitate and make things easier to create videos, I have created a web interface to make things easier. 
 
 ### So i got extremely bored over the holidays and decided to just make a fun project to see if its possible to automate the kind of content i was seeing on TikTok
 
@@ -33,6 +31,9 @@ I have made a series of new updates in particular:
 
 ### High Level Diagram
 ![Diagram](images/diagram.png)
+
+### Switch
+Deciding if its a thread or an actual link based on the link provided, if it is a thread it will go through a filter via VADER and llama 3.3 70b via sentiment analysis to see which thread to select, else it would enter directly into scraping.
 
 ### Scraping 
 Simple webscraping using Reddit's open source API, to collect the title and story based off the reddit website
@@ -61,9 +62,17 @@ There are mainly 6 important scripts within this, each deliberately separated so
 
 Afterwards, just run the script 
 
-``` python main.py```
+``` python server.py```
 
 and you are good to go!
+
+Take note, when turning on the reddit link thread,
+
+![Terminal](images/terminal.png)
+
+
+it will prompt for Groq API Key which can be acquired when you sign up as a Groq member. I will look into integrated other LLMs or creating your own heuristics too in the future :).
+
 
 ## Others:
 ### Why is there no requirements.txt? 
