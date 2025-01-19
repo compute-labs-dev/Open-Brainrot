@@ -7,7 +7,7 @@ from search import *
 
 def main(reddit_url, llm  = False, scraped_url = 'texts/scraped_url.txt', output_pre = 'texts/processed_output.txt', \
           final_output = 'texts/oof.txt',speech_final = 'audio/output_converted.wav', subtitle_path = 'texts/testing.ass', \
-            output_path = 'final/final.mp4',speaker_wav="assets/trump.mp3", video_path = 'assets/subway.mp4'):
+            output_path = 'final/final.mp4',speaker_wav="assets/default.mp3", video_path = 'assets/subway.mp4'):
     print("L1: SCRAPING RIGHT NOW")
     if not llm:
         map_request = scrape(reddit_url)
@@ -51,6 +51,6 @@ def main(reddit_url, llm  = False, scraped_url = 'texts/scraped_url.txt', output
     ## Finally, we need to generate the brain rot video tself
     add_subtitles_and_overlay_audio(video_path,speech_final, subtitle_path, output_path)
     print("DONE! SAVED AT " + output_path)
+
 if __name__ == "__main__":
-    test_url = input("Input URL")
-    main(test_url, llm = True, speaker_wav = "assets/default.mp3", video_path = 'assets/subway.mp4')
+    main("https://www.reddit.com/r/askSingapore/", llm = True)
