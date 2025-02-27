@@ -1,2 +1,25 @@
+# Files
 assets/edit.mp4
 final
+
+# Virtual environment
+.venv
+venv
+
+# Environment variables
+.env
+
+# macOS
+.DS_Store
+
+# Python
+__pycache__
+
+# Ignore all files in texts directory
+texts/*
+# Don't ignore files ending with _example.txt
+!texts/*_example.txt
+# Don't ignore files ending with _example.ass
+!texts/*_example.ass
+
+

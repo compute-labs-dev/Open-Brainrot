@@ -4,29 +4,40 @@ from force_alignment import *
 from dict import * 
 from video_generator import * 
 from search import *
+from brainrot_generator import transform_to_brainrot
 
-def main(reddit_url, llm  = False, scraped_url = 'texts/scraped_url.txt', output_pre = 'texts/processed_output.txt', \
-          final_output = 'texts/oof.txt',speech_final = 'audio/output_converted.wav', subtitle_path = 'texts/testing.ass', \
-            output_path = 'final/final.mp4',speaker_wav="assets/default.mp3", video_path = 'assets/subway.mp4'):
+def main(reddit_url, llm=False, scraped_url='texts/scraped_url.txt', output_pre='texts/processed_output.txt',
+         final_output='texts/oof.txt', speech_final='audio/output_converted.wav', subtitle_path='texts/testing.ass',
+         output_path='final/final.mp4', speaker_wav="assets/default.mp3", video_path='assets/subway.mp4', 
+         language="en-us", api_key=None):
+    
     print("L1: SCRAPING RIGHT NOW")
-    if not llm:
-        map_request = scrape(reddit_url)
-    else:
-        print("Using LLM to determine best thread to scrape")
-        print("-------------------")
-        reddit_scrape = scrape_llm(reddit_url)
-        text = vader(reddit_scrape)
-        api = input("Please input the API key\n")
-        map_request= groq(text, api) 
-    print(map_request)
-    save_map_to_txt(map_request,scraped_url)
+    if reddit_url:  # Only try to scrape if URL is provided
+        if not llm:
+            map_request = scrape(reddit_url)
+        else:
+            print("Using LLM to determine best thread to scrape")
+            print("-------------------")
+            reddit_scrape = scrape_llm(reddit_url)
+            text = vader(reddit_scrape)
+            if not api_key:
+                api_key = input("Please input the API key\n")
+            map_request = groq(text, api_key)
+        print(map_request)
+        save_map_to_txt(map_request, scraped_url)
+    
+    # Transform content to brainrot style
+    print("L1.5: TRANSFORMING TO BRAINROT STYLE")
+    brainrot_file = 'texts/brainrot_output.txt'
+    transform_to_brainrot(scraped_url, brainrot_file, api_key)
+    
     # ## AUDIO CONVERSION 
     print("L2: AUDIO CONVERSION NOW (TAKES THE LONGEST)")
-    audio(scraped_url, speaker_wav = speaker_wav)
+    audio_wrapper(brainrot_file, speaker_wav=speaker_wav, language=language)
     convert_audio('audio/output.wav',speech_final)
     
     # IMPORTANT PRE PROCESSING STUFF 
-    process_text(scraped_url, output_pre)
+    process_text(brainrot_file, output_pre)
     process_text_section2(output_pre, final_output)
 
     with open(final_output, 'r') as file: 
@@ -48,7 +59,7 @@ def main(reddit_url, llm  = False, scraped_url = 'texts/scraped_url.txt', output
     print("L4: VIDEO GENERATION")
     convert_timing_to_ass(timing_list, subtitle_path)
 
-    ## Finally, we need to generate the brain rot video tself
+    ## Finally, we need to generate the brain rot video itself
     add_subtitles_and_overlay_audio(video_path,speech_final, subtitle_path, output_path)
     print("DONE! SAVED AT " + output_path)
 

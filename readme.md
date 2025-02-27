@@ -1,90 +1,161 @@
-# Open Brain Rot 
-![Logo](images/logo.jpg) 
-<Created with Imagen 3>
+# Open Brain Rot
 
-## Updates:
-Thank you everyone for the support so far albeit the r/learnmachinelearning && r/machinelearning community! In short here are some future updates I would be doing overtime
-1. Readjusting the text and font :white_check_mark:
-2. Adding k-ranking sentiments using VADER  :white_check_mark:
-3. Adding parallel compute (Very much in the future)
-4. Add support for generative image and video in the future
-5. Create CLI interface or fully functional website :white_check_mark:
-6. Update readme for LLM scraping feature! :white_check_mark:
+![Logo](images/logo.jpg)
 
+> A TikTok-style content generator that transforms Reddit posts into viral-worthy videos with AI-generated voiceovers and synchronized subtitles.
 
-## New Updates!!:
+## 🎬 Demo
 
-### UI Interface has finally been created!
-![UI Interface](images/ui.png)
+[![Watch the demo video](images/thumbnail.png)](https://youtube.com/shorts/CRhbay8YvBg)
 
-To facilitate and make things easier to create videos, I have created a web interface to make things easier. 
+## 🧠 What is Brain Rot?
 
-### So i got extremely bored over the holidays and decided to just make a fun project to see if its possible to automate the kind of content i was seeing on TikTok
+"Brain rot" content refers to those addictive, short-form videos that flood social media platforms like TikTok - designed to be consumed rapidly and keep you scrolling. This project automates the creation of such content by:
 
-## A simple brain rot generator just by inserting your reddit url
+1. Scraping content from Reddit
+2. Transforming it into exaggerated, attention-grabbing monologues
+3. Converting text to speech with realistic TikTok-style voiceovers
+4. Generating perfectly synchronized subtitles
+5. Packaging everything into a ready-to-upload video
 
-## Example
-[![Watch the video](images/thumbnail.png)](https://youtube.com/shorts/CRhbay8YvBg)
+## ✨ Features
 
+-   **Web Interface**: Simple UI to generate videos with just a Reddit URL
+-   **Thread Analysis**: Uses VADER sentiment analysis and LLaMA 3.3 70B to select the most engaging Reddit threads
+-   **AI Voice Generation**: Leverages Coqui's xTTSv2 for realistic TikTok-style voiceovers
+-   **Perfect Subtitle Sync**: Employs Wav2Vec2 for precise forced alignment between audio and text
+-   **Customizable**: Use your own background videos and voice samples
 
-## How it works 
+## 🔍 How It Works
 
-### High Level Diagram
-![Diagram](images/diagram.png)
+![System Diagram](images/diagram.png)
 
-### Switch
-Deciding if its a thread or an actual link based on the link provided, if it is a thread it will go through a filter via VADER and llama 3.3 70b via sentiment analysis to see which thread to select, else it would enter directly into scraping.
+### Pipeline:
 
-### Scraping 
-Simple webscraping using Reddit's open source API, to collect the title and story based off the reddit website
+1. **Input Processing**: Determines if the input is a thread or direct link
+2. **Content Scraping**: Extracts content from Reddit using their API
+3. **Brainrot Transformation**: Converts formal content into exaggerated TikTok-style monologues
+4. **Voice Synthesis**: Generates realistic speech from the transformed text
+5. **Forced Alignment**: Creates perfectly timed subtitles that match the audio
+6. **Video Generation**: Combines background video, audio, and subtitles into the final product
 
-### Voice Translation:
-Using Coqui's xTTSv2 (which is super lightweight , portable and accurate), I converted the text into audio. Coqui's TTS audio also allows you to use sample audios, so I used the common-man's TikTok audio. 
+## 🚀 Getting Started
 
-### Pre-processing:
-Removal of certain punctuations, special characters via RegEx before we carry out force alignment.
+### Prerequisites
 
-### On Force Alignment: 
-The most important step to generate the video was the alignment between audio and text in order to get the subtitle. This was achieved using forced alignment. In this, we used wav2vec2 and base it all on Motu Hira's tutorial on Forced alignment with Wav2Vec2. It uses a frame-wise label probality from the audio (that is the voice that we generated), creates a trellis matrix representing the probability of labels aligned per time step before using the most likely path from the trellis matrix.
+-   Python 3.8+
+-   PyTorch (with CUDA 12.4 for GPU acceleration)
+-   [Coqui TTS](https://github.com/coqui-ai/TTS)
+-   [FFmpeg](https://www.ffmpeg.org/)
+-   Groq API key (for LLM features)
 
-### ffpmeg Magic:
-Once we got the audio, video sample as well as the timestamp text (which is in .ass format btw), we can then generate the video using some simple ffmpeg magic. This subprocess can be viewed under
+### Installation
 
-``` video_generator.py ```
+1. Clone the repository:
 
-## How to run it
-There are mainly 6 important scripts within this, each deliberately separated so that it can be easier to include any upgrades in the future (and what not)
+    ```bash
+    git clone https://github.com/compute-labs-dev/Open-Brainrot.git
+    cd Open-Brainrot
+    ```
 
-### Pre-requisites:
-1. PyTorch (with CUDA 12.4)
-2. Coqui TTS ([Link](https://github.com/coqui-ai/TTS))
-3. FFMpeg ([Link](https://www.ffmpeg.org/))
+2. Set up a virtual environment (recommended):
 
-Afterwards, just run the script 
+    ```bash
+    python -m venv venv
+    source venv/bin/activate  # On Windows: venv\Scripts\activate
+    ```
 
-``` python server.py```
+3. Install dependencies:
 
-and you are good to go!
+    ```bash
+    pip install torch torchaudio transformers requests python-dotenv
+    pip install TTS
+    ```
 
-Take note, when turning on the reddit link thread,
+4. Create a `.env` file with your API keys:
+    ```
+    GROQ_API_KEY=your_groq_api_key_here
+    ```
 
-![Terminal](images/terminal.png)
+## 📁 Required Files and Directories
 
+Before running the application, you need to create the following directory structure and example files:
 
-it will prompt for Groq API Key which can be acquired when you sign up as a Groq member. I will look into integrated other LLMs or creating your own heuristics too in the future :).
+### Directories
 
+-   `assets/` - For storing background videos and voice samples
+    -   Place your background video as `subway.mp4` here
+    -   Place your voice sample as `default.mp3` here
+-   `audio/` - For storing generated audio files
+-   `final/` - For storing the final output videos
+-   `texts/` - For storing text files during processing
+    -   Create example files with `*_example.txt` and `*_example.ass` naming pattern
 
-## Others:
-### Why is there no requirements.txt? 
-I installed the script on my personal venv so if i were to make a pip it would be very messy (and I am too lazy to do that)  ~ in general just follow the instructs on how to run it above and it should be good
+### Example Files
 
-### Are there any future updates?
-So far , yes there are but it is to hopefully create website or gradio to make this more user friendly, and to hopefully create more brain rot videos in the future (i am looking at OpenSora but no plans as of now)
+Create these example files to understand the expected format:
 
+-   `texts/input_example.txt` - Example input text
+-   `texts/brainrot_example.txt` - Example transformed text
+-   `texts/subtitle_example.ass` - Example subtitle file
 
-## Thanks:
-I would like to thank Motu Hira for creating this tutorial on Forced Alignment using Wav2Vec2. Without this, the subtitles would not be able to work (the original plan was to use CMUSphinx but the lack of community support made it difficult for me to work with)
+### Environment File
 
-Here is the original Tutorial if anyone is interested: 
+-   `.env` - Create this file in the root directory with your API keys:
+    ```
+    GROQ_API_KEY=your_groq_api_key_here
+    ```
 
-[Link](https://pytorch.org/audio/main/tutorials/forced_alignment_tutorial.html)
+The application will automatically create the following files during processing:
+
+-   `texts/scraped_url.txt` - Scraped content from Reddit
+-   `texts/processed_output.txt` - Intermediate processed text
+-   `texts/oof.txt` - Final processed text
+-   `texts/brainrot_output.txt` - Text transformed into brainrot style
+-   `texts/testing.ass` - Generated subtitle file
+-   `audio/output.wav` - Generated speech
+-   `audio/output_converted.wav` - Processed speech for alignment
+-   `final/final.mp4` - Final output video
+
+### Usage
+
+Run the application from the command line:
+
+```bash
+python3 -c "from main import main; main('', llm=False, scraped_url='texts/scraped_url.txt')"
+```
+
+This command will:
+
+1. Import the main function from main.py
+2. Run the pipeline with an empty URL (no scraping)
+3. Use the content from texts/scraped_url.txt as input
+4. Generate the final video at final/final.mp4
+
+## 🛠️ Project Structure
+
+-   `main.py`: Core pipeline orchestration
+-   `scraping.py`: Reddit content extraction
+-   `brainrot_generator.py`: Content transformation using LLMs
+-   `audio.py`: Text-to-speech conversion
+-   `force_alignment.py`: Subtitle synchronization
+-   `video_generator.py`: Final video assembly
+-   `server.py`: Web interface
+
+## 🙏 Acknowledgments
+
+-   [Motu Hira's Forced Alignment Tutorial](https://pytorch.org/audio/main/tutorials/forced_alignment_tutorial.html) for the subtitle synchronization technique
+-   [Coqui TTS](https://github.com/coqui-ai/TTS) for the text-to-speech capabilities
+-   [Reddit API](https://www.reddit.com/dev/api/) for content access
+-   The r/learnmachinelearning and r/machinelearning communities for their support
+
+## 📄 License
+
+This project is licensed under the MIT License - see the [LICENSE.md](LICENSE.md) file for details.
+
+---
+
+<p align="center">
+  <i>Forked by <a href="https://github.com/compute-labs-dev">Compute Labs</a></i><br>
+  <i>Original by <a href="https://github.com/harvestingmoon">@harvestingmoon</a></i>
+</p>
