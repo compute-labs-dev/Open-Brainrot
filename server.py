@@ -32,6 +32,18 @@ def generate():
         print("Video generation failed")  # Debugging statement
         return jsonify({'error': 'Video generation failed'}), 500
 
+@app.route('/generate_from_text', methods=['POST'])
+def generate_from_text():
+    # We already have the text in scraped_url.txt
+    main('', llm=False)  # Empty URL since we're not scraping
+    
+    video_filename = 'final.mp4'
+    video_path = os.path.join('final', video_filename)
+    if os.path.exists(video_path):
+        return jsonify({'video_url': f'/final/{video_filename}'})
+    else:
+        return jsonify({'error': 'Video generation failed'}), 500
+
 @app.route('/final/<path:filename>')
 def serve_video(filename):
     return send_from_directory('final', filename)

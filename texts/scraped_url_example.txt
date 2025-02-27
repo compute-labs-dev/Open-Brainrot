@@ -1,0 +1,119 @@
+Agent Daily Digest Bot
+APP  Today at 5:04 AM
+Daily Digest (Feb 26, 2025) – AI, Compute, & Web3
+:earth_americas: Macro:
+• :us: Trump announces "Gold Card" program allowing foreigners to pay $5 million to enter US and create jobs.
+• :flag-il: Israel-Hamas agree on prisoner exchange, maintaining fragile ceasefire that ended 15-month conflict.
+• :flag-tw: Taiwan detained eight Chi…
+See more
+Tweet Processing Stats:
+• Total Tweets: 545
+• Filtered Out: 470
+• Quality Tweets: 75
+• Quality Rate: 13.8%
+• Word Count: 1,857
+Additional Source Stats:
+• Telegram Messages: 106 (1,887 words)
+• RSS Articles: 43 (8,113 words)
+Token Usage Stats:
+• Prompt Tokens: 47823
+• Completion Tokens: 2042
+• Reasoning Tokens: 1394
+• Total Tokens: 49865
+AI Model:
+• Provider: Anthropic
+• Model: claude-3-7-sonnet-20250219
+8 replies
+
+Agent Daily Digest Bot
+APP  Today at 5:04 AM
+:earth_americas: Macro Analysis
+• :us: Trump announces "Gold Card" program allowing foreigners to pay $5 million to enter US and create jobs.
+President Donald Trump has announced a new immigration initiative called the "Gold Card" program, which will allow foreign nationals to pay $5 million for the right to work in the United States and establish a path to citizenship. According to Trump, this program would replace the existing EB-5 investor visa program, with the added requirement that Gold Card recipients would be vetted. Trump indicated the program would launch "in the next two weeks" and mentioned that "even Russian Oligarchs will be eligible for it," noting the program's purpose is to encourage foreigners to "enter US and create jobs."
+Sources:
+• Tweets: @AutismCapital "Trump says in the next two weeks the United States will be selling a 'Gold Card'. A $5M purchasable green card", @WatcherGuru "President Trump to create 'gold cards' program allowing foreigners to pay $5 million to enter US", @unusual_whales "Trump said will begin program to sell Trump gold cards for $5 million for foreigners"
+• :flag-il: Israel-Hamas agree on prisoner exchange, maintaining fragile ceasefire that ended 15-month conflict.
+Israeli and Hamas officials have reached an agreement to exchange the bodies of deceased hostages for the release of hundreds of Palestinian prisoners, preserving the fragile ceasefire that ended 15 months of conflict. According to AP News, the agreement resolves a deadlock that threatened to collapse the current six-week ceasefire, which was brokered by the U.S., Egypt, and Qatar. The conflict began with Hamas' October 7, 2023 attack that killed approximately 1,200 people in Israel and took about 250 hostages. Under the current ceasefire's first phase, Hamas is returning 33 hostages, including eight bodies, in exchange for nearly 2,000 Palestinian prisoners.
+Sources:
+• Articles: AP News "Israel and Hamas agree on new exchange, leaving fragile ceasefire intact"
+• :flag-tw: Taiwan detained eight Chinese nationals after undersea communications cable was cut.
+Taiwan authorities have detained eight Chinese nationals following an incident where an undersea communications cable was cut. According to Bloomberg, this detention comes amid ongoing tensions in the region, though specific details about the circumstances of the cable cutting or the charges against the detained individuals were not provided in the available sources.
+Sources:
+• Tweets: @economics "Taiwan detained eight Chinese nationals after an undersea communications cable was cut"
+See less
+5:04
+:computer: Technology & Infrastructure Analysis
+• Mercedes-Benz starts road testing solid-state batteries, extending EV range by 25% to 1,000 kilometers.
+Mercedes-Benz has begun road testing vehicles equipped with solid-state batteries, a next-generation technology that significantly enhances electric vehicle range. According to reports from February 26, the German automaker's test vehicles based on the EQS model equipped with these new batteries have achieved a 25% increase in driving range, allowing for up to 1,000 kilometers (approximately 621 miles) on a single charge. This advancement represents a major milestone in addressing range limitations that have been a key concern for electric vehicle adoption.
+Sources:
+• Telegram: Financial_Express "梅赛德斯 - 奔驰开启全固态电池路测...搭载该套固态电池的纯电 EQS 测试车，续航里程增加 25%，单次充电可行驶 1000 公里"
+• Google releases free Gemini Code Assist for VS Code with 180K monthly completions and 128K token context.
+Google has released Gemini Code Assist for Visual Studio Code as a free service, intensifying competition in the AI coding assistant space. According to sources, the tool offers developers 180,000 monthly code completions and supports a substantial 128,000 token context window, allowing it to process larger codebases. The service supports all public domain programming languages, making it widely accessible to developers across different technical stacks. This move represents Google's strategic effort to compete with other AI coding assistants by leveraging its financial resources to offer premium features at no cost.
+Sources:
+• Tweets: @op7418 "Google releases free VS Code AI coding plugin Gemini Code Assist with 180K monthly completions and 128K token context window", @testingcatalog "Gemini Code Assist is now free :fire:"
+• DeepSeek launches DeepGEMM, an FP8 GEMM library achieving 1350+ TFLOPS on Hopper GPUs.
+DeepSeek has announced the release of DeepGEMM, a high-performance FP8 GEMM (General Matrix Multiplication) library designed for AI model training and inference. According to DeepSeek's announcement, the library achieves impressive performance of over 1,350 TFLOPS (trillion floating-point operations per second) on NVIDIA's Hopper GPUs. DeepGEMM supports both dense and Mixture of Experts (MoE) GEMM operations, which are crucial for large language models like DeepSeek's V3 and R1. The library is designed with minimal dependencies and utilizes Just-In-Time compilation, making it both efficient and accessible to developers who need high-performance matrix operations for AI workloads.
+Sources:
+• Tweets: @deepseek_ai "Introducing DeepGEMM - an FP8 GEMM library that supports both dense and MoE GEMMs, powering V3/R1 training and inference. :zap: Up to 1350+ FP8 TFLOPS on Hopper GPUs"
+See less
+5:04
+:robot_face: AI & Research Analysis (Part 1/2)
+• OpenAI rolls out Deep Research to all paid users with 10-120 monthly queries depending on plan.
+OpenAI has announced the complete rollout of its Deep Research feature to all paid ChatGPT users, with varying access levels based on subscription tier. According to OpenAI's announcement, ChatGPT Plus, Team, Enterprise, and Education users will receive 10 deep research queries per month, while Pro tier subscribers will have access to 120 queries monthly. Deep Research, which is currently the only way to access OpenAI's full o3 model capabilities, has been improved since its initial limited release to include embedded images with citations and enhanced ability to understand and reference uploaded files. OpenAI also published a system card detailing how Deep Research was built, assessed for capabilities and risks, and safety-improved with help from "hundreds of experts" who contributed to its training.
+Sources:
+• Tweets: @OpenAI "Deep research is now rolling out to all ChatGPT Plus, Team, Edu, and Enterprise users", "To start, Plus, Team, Enterprise, and Edu users will have 10 deep research queries per month. Pro users will now have 120", @testingcatalog "Deep Research is the only way to access full o3 model at this moment", @slow_developer "Deep Research is now rolling out to all ChatGPT Plus users"
+• OpenAI introduces Advanced Voice powered by GPT-4o mini to free users as daily preview.
+OpenAI has expanded access to its Advanced Voice feature by introducing a GPT-4o mini-powered version for all ChatGPT free users. According to OpenAI's announcement, this provides non-paying users with a daily preview of conversational AI technology that maintains a "natural conversation pace and tone" similar to the full GPT-4o version, while being "more cost effective to serve." Paid subscribers will continue to enjoy enhanced access, with Plus users retaining their existing daily rate limit (which OpenAI notes is "more than 5x the free limit") and additional features such as video and screen sharing capabilities within Advanced Voice. This move represents OpenAI's strategy to introduce premium features in limited form to free users while maintaining enhanced capabilities for paying customers.
+Sources:
+• Tweets: @OpenAI "Starting today, we're rolling out a version of Advanced Voice powered by GPT-4o mini to give all ChatGPT free users", "Plus users will continue to have access to Advanced Voice powered by 4o with the existing daily rate limit", @testingcatalog "OpenAI is rolling out Advanced Voice Mode to free users powered by 4o mini as a feature preview"
+• Anthropic launches world's first '*Hybrid Reasoning*' AI model, leading multiple benchmarks.
+See less
+5:04
+:robot_face: AI & Research Analysis (Part 2/2)
+Anthropic has announced the release of what it calls the "world's first 'Hybrid Reasoning' AI model," according to technology industry reports. While specific details about the model's architecture and capabilities are limited in the available sources, industry observers note that Anthropic's recent Claude 3.7 Sonnet model has achieved top positions across multiple AI benchmark leaderboards. The concept of "Hybrid Reasoning" appears to represent a new approach to AI reasoning capabilities, though the precise nature of this innovation was not elaborated upon in the available information.
+Sources:
+• Tweets: @rowancheung "Anthropic just launched the world's first 'Hybrid Reasoning' AI model", @slow_developer "claude 3.7 sonnet is nearly at the top of every leaderboard"
+See less
+5:04
+:coin: Crypto/Web3 Analysis (Part 1/4)
+• :us: SEC drops investigation against Uniswap Labs after extended probe into the DeFi protocol.
+The U.S. Securities and Exchange Commission (SEC) has concluded its investigation of Uniswap Labs without taking enforcement action against the decentralized finance (DeFi) protocol developer. According to multiple sources including the Wall Street Journal, this decision ends a prolonged regulatory probe into Uniswap, one of the most prominent projects in the DeFi ecosystem. Cointelegraph characterized the development as a "huge win for DeFi" and suggested it might signal a broader shift in the SEC's approach to crypto enforcement under the Trump administration in 2025. The investigation's conclusion provides regulatory clarity for Uniswap Labs and potentially sets a precedent for how similar DeFi protocols might be treated by U.S. regulators.
+Sources:
+• Tweets: @WatcherGuru "SEC drops Uniswap investigation", @Cointelegraph "SEC drops investigation against Uniswap Labs", @DegenerateNews "SEC DROPS INVESTIGATION INTO @Uniswap LABS - PER @WSJ"
+• Articles: Cointelegraph "SEC backs off: Uniswap announces end of investigation"
+• Bitcoin enters technical bear market, falling 20% from all-time high to under $88,000.
+Bitcoin has entered what analysts define as a "technical bear market," dropping 20% from its all-time high and trading below $88,000 for the first time since November 2024. According to market data, this significant decline has triggered widespread concern in the cryptocurrency market, with the Bitcoin Fear & Greed Index falling to 25, indicating "extreme fear" among investors. Economic analyst Mohamed El-Erian noted the decline is occurring amid a "more general 'risk off' market sentiment," though he characterized it as "relatively mild." This 20% drawdown from recent highs represents Bitcoin's most substantial correction since its bull run began, and marks a psychological threshold that traditionally separates bull and bear market conditions.
+Sources:
+• Tweets: @unusual_whales "Bitcoin has hit a technical bear market, falling 20% from its high", @WatcherGuru "Bitcoin falls under $88,000 for the first time since November, 2024", @DegenerateNews "$BTC DOWN OVER 20% FROM ATH", @elerianm "Bitcoin is currently trading down 6% at around $88,000", @WatcherGuru "Bitcoin 'Fear & Greed Index' falls to 25, extreme fear"
+• :us: SEC acknowledges Grayscale filing to allow staking for its spot Ethereum ETF.
+See less
+5:04
+:coin: Crypto/Web3 Analysis (Part 2/4)
+The U.S. Securities and Exchange Commission (SEC) has formally acknowledged Grayscale's filing to incorporate Ethereum staking capabilities into its spot Ethereum ETF product. This acknowledgment represents a procedural step in the regulatory review process for Grayscale's proposed enhancement to its existing Ethereum investment vehicle. If approved, this would allow the Grayscale Ethereum ETF to generate additional yield through staking rewards, potentially making it more attractive to investors seeking both exposure to Ethereum price movements and the passive income benefits of participating in the Ethereum network's proof-of-stake consensus mechanism. The SEC's acknowledgment does not guarantee approval but indicates the proposal has entered the formal review process.
+Sources:
+• Tweets: @WatcherGuru "SEC acknowledges Grayscale filing to allow staking for its spot Ethereum ETF", @Cointelegraph "SEC acknowledges Grayscale's proposal to integrate staking into its spot Ethereum ETF"
+• Ethereum Foundation's Aya Miyaguchi transitions from Executive Director to President role.
+Aya Miyaguchi is transitioning from her position as Executive Director to become President of the Ethereum Foundation, according to multiple cryptocurrency news outlets. Miyaguchi has been a key figure at the Ethereum Foundation, which plays a crucial role in supporting development and research for the Ethereum blockchain. While specific details about the reasons for the transition or the duties of her new role were not elaborated upon in the available sources, this leadership change represents a significant shift in the organization's executive structure. The Ethereum Foundation is known for its grants and funding programs that support projects building on Ethereum technology and research advancing the blockchain's capabilities.
+Sources:
+• Tweets: @Cointelegraph "Aya Miyagotchi will transition from Executive Director to President of the Ethereum Foundation", @coindesk "Ethereum Foundation's Aya Miyaguchi Leaving Executive Director Role"
+• Crypto market sees $1.48 billion liquidated in 24 hours as Bitcoin leads downward trend.
+See less
+5:04
+:coin: Crypto/Web3 Analysis (Part 3/4)
+The cryptocurrency market experienced a massive liquidation event with approximately $1.48 billion worth of positions wiped out in a 24-hour period, according to market monitoring sources. This substantial volume of forced closures of leveraged trading positions came amid Bitcoin's decline below $88,000 and broader market instability. The liquidation event primarily affected long positions (bets on price increases) as the market turned sharply downward, triggering automated margin calls across cryptocurrency derivatives exchanges. Such large-scale liquidation events typically exacerbate market moves by forcing additional selling pressure as positions are automatically closed, potentially creating a cascading effect across the cryptocurrency market.
+Sources:
+• Tweets: @WatcherGuru "$1,480,000,000 liquidated from the cryptocurrency market in the past 24 hours", @DegenerateNews "OVER $1.5 BILLION WORTH OF CRYPTO LONGS/SHORTS LIQUIDATED IN THE PAST 24 HOURS"
+• :us: US spot Bitcoin ETFs record largest-ever daily outflow of $938 million.
+U.S. spot Bitcoin exchange-traded funds (ETFs) recorded their largest-ever single-day outflow of approximately $938 million on February 25, 2025, according to market data. This record withdrawal comes amid Bitcoin's broader price decline, with Cointelegraph reporting that these investment vehicles have experienced more than $2.4 billion in net outflows throughout February. CoinDesk analysis suggests that the rising yields on 10-year Treasury notes are diminishing the appeal of Bitcoin "carry trades," where investors borrow at lower interest rates to invest in assets expected to yield higher returns. The significant outflow indicates a potential shift in institutional sentiment toward Bitcoin as traditional fixed-income investments become more attractive in the current interest rate environment.
+Sources:
+• Tweets: @Cointelegraph "US spot Bitcoin ETFs recorded the largest ever outflows with $937.9M on Feb. 25", @coindesk "U.S. Bitcoin ETFs See Record Daily Outflow of Over $930M as Carry Trades Lose Shine to The 10-Year Treasury Note"
+• Articles: Cointelegraph "US spot Bitcoin ETFs see largest-ever daily outflow of $938M"
+• Kaspersky warns hackers using fake GitHub projects to steal crypto, one victim lost 5 Bitcoin.
+See less
+5:04
+:coin: Crypto/Web3 Analysis (Part 4/4)
+Cybersecurity firm Kaspersky has issued a warning about hackers creating fraudulent GitHub repositories designed to steal cryptocurrency from unsuspecting users. According to Kaspersky's report, these attackers are operating a campaign dubbed "GitVenom" that has been active for at least two years and targets users by creating convincing fake GitHub projects that appear to be legitimate tools such as Telegram Bitcoin wallet management bots or computer game utilities. The malicious code embedded in these repositories can steal passwords, cryptocurrency wallet information, and hijack Bitcoin transaction addresses. Kaspersky documented at least one victim who lost 5 Bitcoin (approximately $442,000 at the time) to this attack in November. The security firm noted that while this campaign primarily affects users in Russia, Brazil, and Turkey, it continues to spread globally.
+Sources:
+• Tweets: @Coindesk "Hackers Are Using Fake GitHub Code to Steal Your Bitcoin: Kaspersky"
+• Articles: Cointelegraph "Hackers are making fake GitHub projects to steal crypto: Kaspersky"
+• Telegram: @wublock "Network security company Kaspersky reported on February 24 that malware activity called 'GitVenom' steals cryptocurrency and user credentials through fake GitHub projects
