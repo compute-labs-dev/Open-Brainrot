@@ -1,25 +1,42 @@
-# rebuilding force alignment using a wav2vec model 
+# rebuilding force alignment using a wav2vec model
 # Force alignment script is based off PyTorch tutorial on force alignment
 
-import torch 
-import torchaudio 
+import torch
+import torchaudio
 from dataclasses import dataclass
 import IPython
 import matplotlib.pyplot as plt
+import os
+import time
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 # likely need to edit the transcript for this
+
+
 def format_text(input_text):
+    """Split the input text into words and format with pipe separators.
+    Returns the formatted text and writes it to a temporary file."""
     # Split the input text into words
     words = input_text.split()
-    
+
     # Join the words with '|' and add leading and trailing '|'
     formatted_text = '|' + '|'.join(words) + '|'
-    return formatted_text
+
+    # Create a temporary file with timestamp
+    timestamp = int(time.time())
+    temp_dir = 'temp'
+    os.makedirs(temp_dir, exist_ok=True)
+    temp_file = os.path.join(temp_dir, f'align-text-to-audio-{timestamp}.txt')
+
+    # Write the formatted text to the temporary file
+    with open(temp_file, 'w', encoding='utf-8') as f:
+        f.write(formatted_text)
+
+    return formatted_text, temp_file
 
 
-## Step 1: Getting class label probability (1)
+# Step 1: Getting class label probability (1)
 
 def class_label_prob(SPEECH_FILE):
     bundle = torchaudio.pipelines.WAV2VEC2_ASR_BASE_960H
@@ -31,27 +48,34 @@ def class_label_prob(SPEECH_FILE):
         emissions = torch.log_softmax(emissions, dim=-1)
 
     emission = emissions[0].cpu().detach()
-    return (bundle,waveform,labels, emission)
+    return (bundle, waveform, labels, emission)
 
 
 # Step 2: Getting the trellis: represents the probability of transcript labels
 # occuring at each time frame
 
 def trellis_algo(labels, ts, emission, blank_id=0):
+    """Calculate trellis matrix for force alignment.
+
+    Args:
+        labels: Label set
+        ts: Already formatted text (should already have pipe separators)
+        emission: Emission matrix
+        blank_id: ID for blank token
+    """
     dictionary = {c: i for i, c in enumerate(labels)}
-    transcript = format_text(ts)
+
+    # Use the text directly without reformatting
     tokens = []
-    for c in transcript:
+    for c in ts:
         if c in dictionary:
             tokens.append(dictionary[c])
         else:
             tokens.append(0)
-   # tokens = [dictionary[c] for c in transcript else '-'] 
-
-        
 
     if not tokens:
-        raise ValueError("Tokens list is empty. Check the input text and labels.")
+        raise ValueError(
+            "Tokens list is empty. Check the input text and labels.")
 
     num_frame = emission.size(0)
     num_tokens = len(tokens)
@@ -59,7 +83,7 @@ def trellis_algo(labels, ts, emission, blank_id=0):
     trellis = torch.zeros((num_frame, num_tokens))
     trellis[1:, 0] = torch.cumsum(emission[1:, blank_id], 0)
     trellis[0, 1:] = -float("inf")
-    trellis[-num_tokens + 1 :, 0] = float("inf")
+    trellis[-num_tokens + 1:, 0] = float("inf")
 
     for t in range(num_frame - 1):
         trellis[t + 1, 1:] = torch.maximum(
@@ -69,11 +93,14 @@ def trellis_algo(labels, ts, emission, blank_id=0):
     return trellis, emission, tokens
 
 # Step 3: most likely path using backtracking algorithm
+
+
 @dataclass
 class Point:
     token_index: int
     time_index: int
     score: float
+
 
 def backtrack(trellis, emission, tokens, blank_id=0):
     t, j = trellis.size(0) - 1, trellis.size(1) - 1
@@ -109,7 +136,6 @@ def backtrack(trellis, emission, tokens, blank_id=0):
         t -= 1
 
     return path[::-1]
-
 
 
 # Step 4: Path segmentation
@@ -157,8 +183,10 @@ def merge_words(segments, separator="|"):
             if i1 != i2:
                 segs = segments[i1:i2]
                 word = "".join([seg.label for seg in segs])
-                score = sum(seg.score * seg.length for seg in segs) / sum(seg.length for seg in segs)
-                words.append(Segment(word, segments[i1].start, segments[i2 - 1].end, score))
+                score = sum(seg.score * seg.length for seg in segs) / \
+                    sum(seg.length for seg in segs)
+                words.append(
+                    Segment(word, segments[i1].start, segments[i2 - 1].end, score))
             i1 = i2 + 1
             i2 = i1
         else:
@@ -166,18 +194,13 @@ def merge_words(segments, separator="|"):
     return words
 
 
-## Formatting portion, ensures that the time adheres to .ASS format
+# Formatting portion, ensures that the time adheres to .ASS format
 def format_time(seconds):
-    """Format time in seconds to h:mm:ss.cc format for ASS subtitles"""
-    # Convert string to float if needed
-    if isinstance(seconds, str):
-        seconds = float(seconds)
-        
     hours = int(seconds // 3600)
     minutes = int((seconds % 3600) // 60)
     seconds = seconds % 60
-    centiseconds = int((seconds - int(seconds)) * 100)
-    return f"{hours}:{minutes:02d}:{int(seconds):02d}.{centiseconds:02d}"
+    return f"{hours:01}:{minutes:02}:{seconds:05.2f}"
+
 
 def display_segment(bundle, trellis, word_segments, waveform, i):
     ratio = waveform.size(1) / trellis.size(0)
@@ -188,47 +211,34 @@ def display_segment(bundle, trellis, word_segments, waveform, i):
     end_time = x1 / bundle.sample_rate
     formatted_start_time = format_time(start_time)
     formatted_end_time = format_time(end_time)
-    print(f"{word.label} ({word.score:.2f}): {formatted_start_time} - {formatted_end_time} sec")
     segment = waveform[:, x0:x1]
-    return (start_time, end_time, word.label)  # Return numeric values, not formatted strings
+    return (word.label, formatted_start_time, formatted_end_time)
 
 
 # this portion converts it into ASS file format
-def convert_timing_to_ass(timing_list, output_file):
-    """
-    Convert timing list to ASS subtitle format optimized for 9:16 vertical video
-    """
-    # ASS subtitle header
-    header = """[Script Info]
+def convert_timing_to_ass(timing_info, output_path):
+    # Create the ASS file content
+    ass_content = """[Script Info]
+; Script generated by Python script
+Title: Default ASS file
 ScriptType: v4.00+
-PlayResX: 608
-PlayResY: 1080
+PlayResX: 384
+PlayResY: 288
 ScaledBorderAndShadow: yes
 YCbCr Matrix: None
 
 [V4+ Styles]
 Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding
-Style: Default,Arial,40,&H00FFFFFF,&H000000FF,&H00000000,&H00000000,-1,0,0,0,100,100,0,0,1,2,2,2,10,10,80,1
+Style: Default,Arial,10,&H00FFFFFF,&H000000FF,&H00000000,&H00000000,-1,0,0,0,100,100,0,0,1,1,0,5,5,5,15,1
 
 [Events]
 Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
 """
-    
-    with open(output_file, 'w', encoding='utf-8') as f:
-        f.write(header)
-        
-        for timing in timing_list:
-            start_time = timing[0]
-            end_time = timing[1]
-            text = timing[2]
-            
-            # Format times as h:mm:ss.cc
-            start_formatted = format_time(start_time)
-            end_formatted = format_time(end_time)
-            
-            # Create subtitle line with text centered and positioned at bottom of screen
-            # Using alignment 2 (bottom-center) and adjusting margins for 9:16 format
-            subtitle_line = f"Dialogue: 0,{start_formatted},{end_formatted},Default,,0,0,0,,{text}\n"
-            f.write(subtitle_line)
-    
-    print(f"Subtitles saved to {output_file}")
+
+    # Add each word with its timing as a dialogue event in the ASS file
+    for word, start_time, end_time in timing_info:
+        ass_content += f"Dialogue: 0,{start_time},{end_time},Default,,0,0,0,,{word}\n"
+
+    # Write the ASS file content to the output file
+    with open(output_path, 'w') as file:
+        file.write(ass_content)
