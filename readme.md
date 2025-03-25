@@ -101,3 +101,30 @@ I would like to thank Motu Hira for creating this tutorial on Forced Alignment u
 Here is the original Tutorial if anyone is interested:
 
 [Link](https://pytorch.org/audio/main/tutorials/forced_alignment_tutorial.html)
+
+## Database Schema Tests
+
+The project includes a suite of tests to verify the database schema changes and interactions with the updated schema. These tests are located in the `tests` directory.
+
+To run all the tests at once, use:
+
+```bash
+./tests/run_all_tests.sh
+```
+
+Or run individual tests:
+
+```bash
+# Test basic database interactions
+./tests/test_db_schema.py
+
+# Test voice field handling in database operations
+./tests/test_db_voice.py
+./tests/test_db_voice_insert.py
+./tests/test_db_update_status.py
+
+# Test process_voice function
+./tests/test_process_voice.py
+```
+
+For detailed information about the database schema changes, see [tests/README_DB_SCHEMA_CHANGES.md](tests/README_DB_SCHEMA_CHANGES.md).

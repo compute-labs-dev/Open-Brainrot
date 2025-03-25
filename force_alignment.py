@@ -8,6 +8,13 @@ import IPython
 import matplotlib.pyplot as plt
 import os
 import time
+import re
+import logging
+import signal
+import threading
+
+# Configure module-level logger
+logger = logging.getLogger(__name__)
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
@@ -39,16 +46,26 @@ def format_text(input_text):
 # Step 1: Getting class label probability (1)
 
 def class_label_prob(SPEECH_FILE):
-    bundle = torchaudio.pipelines.WAV2VEC2_ASR_BASE_960H
-    model = bundle.get_model().to(device)
+    bundle, model = load_model_with_timeout()
+    if bundle is None or model is None:
+        return None
+
+    # Move model to the appropriate device
+    model = model.to(device)
+
     labels = bundle.get_labels()
     with torch.inference_mode():
-        waveform, _ = torchaudio.load(SPEECH_FILE)
-        emissions, _ = model(waveform.to(device))
-        emissions = torch.log_softmax(emissions, dim=-1)
-
-    emission = emissions[0].cpu().detach()
-    return (bundle, waveform, labels, emission)
+        waveform, sample_rate = torchaudio.load(SPEECH_FILE)
+        waveform = waveform.to(device)
+        if sample_rate != bundle.sample_rate:
+            waveform = torchaudio.functional.resample(
+                waveform, sample_rate, bundle.sample_rate)
+        emission, _ = model(waveform)
+        emission = emission.cpu().detach()
+        emission = torch.log_softmax(emission, dim=-1)
+        emission = emission.transpose(0, 1)
+        emission_cpu = emission.cpu()
+        return emission_cpu, labels, waveform, bundle
 
 
 # Step 2: Getting the trellis: represents the probability of transcript labels
@@ -102,39 +119,39 @@ class Point:
     score: float
 
 
-def backtrack(trellis, emission, tokens, blank_id=0):
-    t, j = trellis.size(0) - 1, trellis.size(1) - 1
+def backtrack(trellis, emission, tokens):
+    # Backtrack to find the optimal path
+    j = trellis.size(1) - 1
+    i = torch.argmax(trellis[:, j]).item()
 
-    path = [Point(j, t, emission[t, blank_id].exp().item())]
-    while j > 0:
-        # Should not happen but just in case
-        assert t > 0
+    # Create a list to store the path
+    path = []
 
-        # 1. Figure out if the current position was stay or change
-        # Frame-wise score of stay vs change
-        p_stay = emission[t - 1, blank_id]
-        p_change = emission[t - 1, tokens[j]]
+    # Add a safety check for the trellis size
+    if trellis.size(1) <= 1:
+        print("Warning: Trellis matrix is too small for backtracking")
+        # Return an empty path or a default path
+        return []
 
-        # Context-aware score for stay vs change
-        stayed = trellis[t - 1, j] + p_stay
-        changed = trellis[t - 1, j - 1] + p_change
+    # Backtrack from the last time frame
+    t = j
+    while t > 0:  # This is where the assertion was failing
+        # Add a safety check
+        if t <= 0:
+            print("Warning: Backtracking reached the beginning of the trellis")
+            break
 
-        # Update position
-        t -= 1
-        if changed > stayed:
-            j -= 1
+        # Get the token index and its emission probability
+        path.append((i, t, tokens[i]))
 
-        # Store the path with frame-wise probability.
-        prob = (p_change if changed > stayed else p_stay).exp().item()
-        path.append(Point(j, t, prob))
+        # Move to the previous frame
+        i = torch.argmax(trellis[:, t-1] * emission[i, t]).item()
+        t = t - 1
 
-    # Now j == 0, which means, it reached the SoS.
-    # Fill up the rest for the sake of visualization
-    while t > 0:
-        prob = emission[t - 1, blank_id].exp().item()
-        path.append(Point(j, t - 1, prob))
-        t -= 1
+    # Add the last token at the first time frame
+    path.append((i, t, tokens[i]))
 
+    # Reverse the path to get time-ascending order
     return path[::-1]
 
 
@@ -196,10 +213,19 @@ def merge_words(segments, separator="|"):
 
 # Formatting portion, ensures that the time adheres to .ASS format
 def format_time(seconds):
-    hours = int(seconds // 3600)
-    minutes = int((seconds % 3600) // 60)
+    """Format time in seconds to MM:SS.MS format"""
+    minutes = int(seconds / 60)
     seconds = seconds % 60
-    return f"{hours:01}:{minutes:02}:{seconds:05.2f}"
+    return f"{minutes:02d}:{seconds:06.3f}"
+
+
+def format_time_ass(seconds):
+    """Format time in ASS format (H:MM:SS.cc)"""
+    hours = int(seconds / 3600)
+    minutes = int((seconds % 3600) / 60)
+    seconds = seconds % 60
+    centiseconds = int((seconds - int(seconds)) * 100)
+    return f"{hours}:{minutes:02d}:{int(seconds):02d}.{centiseconds:02d}"
 
 
 def display_segment(bundle, trellis, word_segments, waveform, i):
@@ -217,28 +243,80 @@ def display_segment(bundle, trellis, word_segments, waveform, i):
 
 # this portion converts it into ASS file format
 def convert_timing_to_ass(timing_info, output_path):
-    # Create the ASS file content
-    ass_content = """[Script Info]
-; Script generated by Python script
-Title: Default ASS file
+    """Convert timing information to ASS subtitle format"""
+    try:
+        # Create ASS file header
+        ass_content = """[Script Info]
+Title: Generated Subtitles
 ScriptType: v4.00+
-PlayResX: 384
-PlayResY: 288
+WrapStyle: 0
 ScaledBorderAndShadow: yes
-YCbCr Matrix: None
+YCbCr Matrix: TV.601
+PlayResX: 1920
+PlayResY: 1080
 
 [V4+ Styles]
 Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding
-Style: Default,Arial,10,&H00FFFFFF,&H000000FF,&H00000000,&H00000000,-1,0,0,0,100,100,0,0,1,1,0,5,5,5,15,1
+Style: Default,Arial,60,&H00FFFFFF,&H000000FF,&H00000000,&H00000000,0,0,0,0,100,100,0,0,1,2,2,5,10,10,50,1
 
 [Events]
 Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
 """
 
-    # Add each word with its timing as a dialogue event in the ASS file
-    for word, start_time, end_time in timing_info:
-        ass_content += f"Dialogue: 0,{start_time},{end_time},Default,,0,0,0,,{word}\n"
+        # Add dialogue events
+        for word, start_time, end_time in timing_info:
+            # Format times as h:mm:ss.cc
+            start_str = format_time_ass(start_time)
+            end_str = format_time_ass(end_time)
 
-    # Write the ASS file content to the output file
-    with open(output_path, 'w') as file:
-        file.write(ass_content)
+            # Filter out special effects markers like (break)
+            if word.startswith('(') and word.endswith(')'):
+                continue
+
+            # Add dialogue line
+            ass_content += f"Dialogue: 0,{start_str},{end_str},Default,,0,0,0,,{word}\n"
+
+        # Write to file
+        with open(output_path, 'w', encoding='utf-8') as f:
+            f.write(ass_content)
+        return True
+    except Exception as e:
+        print(f"Error converting timing to ASS: {e}")
+        return False
+
+# Add a timeout handler for model downloads
+
+
+class TimeoutError(Exception):
+    pass
+
+
+def timeout_handler(signum, frame):
+    raise TimeoutError("Model download timed out")
+
+
+def load_model_with_timeout(timeout=120):
+    """Load the wav2vec2 model with a timeout"""
+    original_handler = signal.getsignal(signal.SIGALRM)
+    try:
+        # Set the timeout
+        signal.signal(signal.SIGALRM, timeout_handler)
+        signal.alarm(timeout)
+
+        # Try to load the model
+        bundle = torchaudio.pipelines.WAV2VEC2_ASR_BASE_960H
+        model = bundle.get_model()
+
+        # Cancel the alarm if successful
+        signal.alarm(0)
+        return bundle, model
+    except TimeoutError:
+        logger.error(f"Model download timed out after {timeout} seconds")
+        return None, None
+    except Exception as e:
+        logger.error(f"Error loading model: {str(e)}")
+        return None, None
+    finally:
+        # Restore the original signal handler
+        signal.signal(signal.SIGALRM, original_handler)
+        signal.alarm(0)
