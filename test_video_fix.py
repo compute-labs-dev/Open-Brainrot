@@ -8,10 +8,13 @@ the video duration matches the audio duration.
 import os
 import logging
 import time
-from audio import audio_wrapper
-from video_generator import get_duration, add_subtitles_and_overlay_audio
 import subprocess
 from math import ceil
+import random
+
+from utils.audio import audio_wrapper
+from generators.video_generator import add_subtitles_and_overlay_audio, get_duration
+from core.main import extract_random_segment, format_time, get_audio_duration
 
 # Configure logging
 logging.basicConfig(
@@ -19,35 +22,6 @@ logging.basicConfig(
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
 )
 logger = logging.getLogger("test_video_fix")
-
-
-def get_audio_duration(audio_path):
-    """Get the duration of an audio file in seconds"""
-    try:
-        import wave
-        with wave.open(audio_path, 'rb') as wf:
-            frames = wf.getnframes()
-            rate = wf.getframerate()
-            duration = frames / float(rate)
-            return duration
-    except Exception:
-        # Fallback method using ffprobe
-        try:
-            import subprocess
-            cmd = ['ffprobe', '-v', 'error', '-show_entries', 'format=duration',
-                   '-of', 'default=noprint_wrappers=1:nokey=1', audio_path]
-            output = subprocess.check_output(cmd).decode('utf-8').strip()
-            return float(output)
-        except Exception:
-            # If all else fails, return a default duration
-            return 60.0  # Default to 1 minute
-
-
-def format_time(seconds):
-    """Format seconds to MM:SS format"""
-    minutes = int(seconds // 60)
-    seconds = int(seconds % 60)
-    return f"{minutes:02d}:{seconds:02d}"
 
 
 def main():
@@ -72,13 +46,12 @@ def main():
         f.write(input_text_content)
     logger.info(f"Saved transcript to: {transcript_path}")
 
-    # Step 1: Generate audio from test_input.txt
-    input_text = "test_input.txt"
+    # Step 1: Generate audio from the transformed text
     audio_output = f"{test_dir}/test_audio.wav"
     voice = "donald_trump"
 
     logger.info(f"Generating audio using voice: {voice}")
-    audio_wrapper(input_text, audio_output, voice)
+    audio_wrapper(transcript_path, audio_output, voice)
 
     # Step 2: Get audio duration
     audio_duration = get_audio_duration(audio_output)
@@ -86,14 +59,20 @@ def main():
         f"Generated audio duration: {format_time(audio_duration)} ({audio_duration:.2f} seconds)")
 
     # Step 3: Create a short video file for testing
-    video_path = "assets/minecraft.mp4"
-    if not os.path.exists(video_path):
-        logger.error(f"Video file not found: {video_path}")
+    source_video = "assets/videos/minecraft.mp4"
+    if not os.path.exists(source_video):
+        logger.error(f"Video file not found: {source_video}")
+        return
+
+    # Extract random segment matching audio duration
+    video_path = f"{test_dir}/input_segment.mp4"
+    if not extract_random_segment(source_video, video_path, audio_duration):
+        logger.error("Failed to extract video segment")
         return
 
     video_duration = get_duration(video_path)
     logger.info(
-        f"Original video duration: {format_time(video_duration)} ({video_duration:.2f} seconds)")
+        f"Extracted video segment duration: {format_time(video_duration)} ({video_duration:.2f} seconds)")
 
     # Step 4: Create a simple subtitle file
     subtitle_path = f"{test_dir}/test_subtitles.ass"
@@ -128,10 +107,10 @@ def main():
         f.write(
             'Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text\n')
 
-        # Write dialogue lines
-        for i, line in enumerate(lines, 1):
-            start_time = (i - 1) * time_per_line
-            end_time = i * time_per_line
+        # Write dialogue lines with proper timing
+        for i, line in enumerate(lines):
+            start_time = i * time_per_line
+            end_time = (i + 1) * time_per_line
 
             # Format times as H:MM:SS.cc for ASS format
             start_str = f"{int(start_time//3600)}:{int((start_time % 3600)//60):02d}:{int(start_time % 60):02d}.{int((start_time % 1)*100):02d}"

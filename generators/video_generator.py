@@ -6,8 +6,83 @@ import re
 import json
 import random
 from pathlib import Path
-from brainrot_generator import transform_to_brainrot, clean_text_for_tts
+from generators.brainrot_generator import transform_to_brainrot, clean_text_for_tts
 from pydub import AudioSegment
+
+# ===== SUBTITLE STYLE CONFIGURATION =====
+SUBTITLE_STYLES = {
+    "Default": {
+        "font_name": "Arial",
+        "font_size": 80,
+        "primary_color": "&H00FFFFFF",  # White (AABBGGRR format)
+        "secondary_color": "&H000000FF",  # Red outline
+        "outline_color": "&H00000000",   # Black outline
+        "back_color": "&H00000000",      # Black shadow
+        "bold": -1,                      # -1 for true, 0 for false
+        "italic": 0,
+        "underline": 0,
+        "strike_out": 0,
+        "scale_x": 100,
+        "scale_y": 100,
+        "spacing": 0,
+        "angle": 0,
+        "border_style": 1,
+        "outline": 1,                    # Outline thickness
+        "shadow": 0,                     # Shadow distance
+        "alignment": 8,
+        # "margin_l": 0,                   # Set left margin to 0 for center alignment
+        # "margin_r": 0,                   # Set right margin to 0 for center alignment
+        "margin_v": 60,                  # Vertical margin from top
+        # Makes text center-aligned instead of left-aligned
+
+    },
+    "Effects": {
+        "font_name": "Arial",
+        "font_size": 80,
+        "primary_color": "&H00FFFFFF",
+        "secondary_color": "&H000000FF",
+        "outline_color": "&H00000000",
+        "back_color": "&H00000000",
+        "bold": -1,
+        "italic": 0,
+        "underline": 0,
+        "strike_out": 0,
+        "scale_x": 100,
+        "scale_y": 100,
+        "spacing": 0,
+        "angle": 0,
+        "border_style": 1,
+        "outline": 0,
+        "shadow": 0,
+        "alignment": 8,                  # Match Default style alignment
+        "margin_l": 0,                   # Set left margin to 0 for center alignment
+        "margin_r": 0,                   # Set right margin to 0 for center alignment
+        "margin_v": 60,                  # Match Default style vertical margin
+    }
+}
+
+# Video dimensions for subtitle positioning
+VIDEO_CONFIG = {
+    "width": 608,      # 9:16 ratio width
+    "height": 1080,    # Standard height
+    "fps": 60,
+}
+
+# ===== HELPER FUNCTIONS =====
+
+
+def generate_ass_style_line(style_name, style_config):
+    """Generate ASS style line from configuration"""
+    return (
+        f"Style: {style_name},{style_config['font_name']},{style_config['font_size']},"
+        f"{style_config['primary_color']},{style_config['secondary_color']},"
+        f"{style_config['outline_color']},{style_config['back_color']},"
+        f"{style_config['bold']},{style_config['italic']},{style_config['underline']},"
+        f"{style_config['strike_out']},{style_config['scale_x']},{style_config['scale_y']},"
+        f"{style_config['spacing']},{style_config['angle']},{style_config['border_style']},"
+        f"{style_config['outline']},{style_config['shadow']},{style_config['alignment']},"
+        f"{style_config['margin_l']},{style_config['margin_r']},{style_config['margin_v']},1"
+    )
 
 
 def get_duration(file_path):
@@ -43,11 +118,12 @@ def trim_video(input_path, output_path, duration=120):
 
 
 def crop_to_vertical(input_path, output_path):
-    """Crop video to 9:16 aspect ratio (vertical video)"""
+    """Crop video to 9:16 aspect ratio (vertical video) while maintaining original resolution"""
     subprocess.run([
         'ffmpeg',
         '-i', input_path,
-        '-vf', 'crop=iw*9/16:ih:iw/2-iw*9/32:0',
+        # This maintains the original height and adjusts width for 9:16
+        '-vf', 'crop=ih*9/16:ih',
         '-c:v', 'libx264', '-preset', 'slow', '-crf', '18', '-profile:v', 'high',
         '-c:a', 'copy',
         '-y',
@@ -204,136 +280,59 @@ def add_subtitles_and_overlay_audio(video_path, audio_path, subtitle_path, outpu
     print(f"Audio duration: {audio_duration:.2f} seconds")
     print(f"Video duration: {video_duration:.2f} seconds")
 
-    # Analyze audio for speech patterns using silencedetect filter
-    # This helps identify natural pauses in speech for better subtitle timing
-    silence_analysis_file = os.path.join(temp_dir, "silence_analysis.txt")
-    silence_cmd = [
+    # Extract a random segment matching audio duration first
+    max_start = video_duration - audio_duration
+    if max_start < 0:
+        print(
+            f"Input video ({video_duration:.2f}s) is shorter than target duration ({audio_duration:.2f}s)")
+        return None
+
+    # Generate random start time
+    start_time = random.uniform(0, max_start)
+
+    # Combine all operations into a single FFmpeg command:
+    # 1. Extract segment
+    # 2. Crop to vertical
+    # 3. Add subtitles
+    # 4. Add audio
+    # All in one command to minimize disk I/O and encoding/decoding steps
+    command = [
         'ffmpeg', '-y',
+        # Input video with start time
+        '-ss', str(start_time),
+        '-i', video_path,
+        # Input audio
         '-i', audio_path,
-        '-af', 'silencedetect=noise=-30dB:d=0.5',
-        '-f', 'null',
-        '-'
+        # Complex filter for combining operations
+        '-filter_complex',
+        f"[0:v]crop=ih*9/16:ih,scale=-2:1080[cropped];" +  # Crop and scale
+        # Add subtitles
+        f"[cropped]subtitles={subtitle_path}:force_style='Alignment=8,MarginV=60'[subbed]",
+        # Map the processed video and audio streams
+        '-map', '[subbed]',
+        '-map', '1:a',
+        # Output settings
+        '-t', str(audio_duration),
+        '-c:v', 'libx264',
+        '-preset', 'fast',  # Change from 'slow' to 'fast' for better performance
+        # Slightly reduce quality for better performance (18 -> 23)
+        '-crf', '23',
+        '-profile:v', 'high',
+        '-pix_fmt', 'yuv420p',
+        '-c:a', 'aac',
+        '-b:a', '192k',
+        '-movflags', '+faststart',  # Enable fast start for web playback
+        output_path
     ]
 
     try:
-        print("Analyzing audio for natural speech patterns...")
-        with open(silence_analysis_file, 'w') as f:
-            process = subprocess.run(
-                silence_cmd, stderr=subprocess.PIPE, text=True, check=False)
-            f.write(process.stderr)
-
-        # Parse silence detection results (will be used later for subtitle adjustment)
-        silence_periods = []
-        if os.path.exists(silence_analysis_file):
-            with open(silence_analysis_file, 'r') as f:
-                content = f.read()
-                # Extract silence start times
-                start_matches = re.findall(
-                    r'silence_start: (\d+\.\d+)', content)
-                # Extract silence end times
-                end_matches = re.findall(r'silence_end: (\d+\.\d+)', content)
-
-                # Pair start and end times
-                for i in range(min(len(start_matches), len(end_matches))):
-                    start = float(start_matches[i])
-                    end = float(end_matches[i])
-                    silence_periods.append((start, end))
-
-            print(f"Detected {len(silence_periods)} natural pauses in speech")
-    except Exception as e:
-        print(
-            f"Silence detection failed: {str(e)}. Continuing without speech pattern analysis.")
-        silence_periods = []
-
-    # Extend video if needed
-    if audio_duration > video_duration:
-        print(f"Audio is longer than video. Extending video to match audio duration.")
-        video_path = extend_video(
-            video_path, temp_dir, audio_duration, video_duration)
-
-    # Crop the video to vertical format
-    print("Cropping video to vertical format...")
-    temp_cropped_video = os.path.join(temp_dir, "temp_cropped_video.mp4")
-    crop_cmd = [
-        'ffmpeg', '-y', '-i', video_path,
-        '-vf', 'crop=ih*9/16:ih',  # 9:16 aspect ratio (vertical video)
-        '-c:v', 'libx264', '-preset', 'slow', '-crf', '18', '-profile:v', 'high', '-pix_fmt', 'yuv420p',
-        '-c:a', 'aac', '-b:a', '192k',
-        temp_cropped_video
-    ]
-    subprocess.run(crop_cmd, check=True)
-
-    # Parse subtitle file
-    subtitle_entries = parse_ass_subtitles(subtitle_path)
-
-    # Fall back to test subtitles if needed
-    if not subtitle_entries:
-        print("Using fallback subtitles")
-        subtitle_entries = create_fallback_subtitles()
-
-    # If we have silence periods, use them to refine subtitle timings
-    if silence_periods:
-        subtitle_entries = adjust_subtitles_with_silence_data(
-            subtitle_entries, silence_periods, audio_duration)
-        print("Applied speech pattern analysis to subtitle timing")
-
-    # Make subtitles sequential by forcing them not to overlap
-    non_overlapping_entries = ensure_strictly_sequential_subtitles(
-        subtitle_entries)
-    print(f"Processing {len(non_overlapping_entries)} subtitle entries")
-
-    # --- NEW APPROACH: Create SRT subtitle file instead of using drawtext filters ---
-    temp_srt_path = os.path.join(temp_dir, "temp_subtitles.srt")
-    create_srt_subtitle_file(non_overlapping_entries, temp_srt_path)
-    print(f"Created temporary SRT subtitle file at: {temp_srt_path}")
-
-    # Temporary file for video with subtitles
-    temp_with_subs = os.path.join(temp_dir, "temp_with_subs.mp4")
-
-    # Add subtitles to video using subtitles filter instead of drawtext
-    print("Adding subtitles to video...")
-
-    # Alignment
-    # 1 = left bottom
-    # 2 = bottom center
-    # 3 = right bottom
-    # 4 = left top
-    # 5 =
-    # 6 = top center
-    # 7 = right top
-    # 8 = left center
-    # 9 = left center
-    # 10 = center center
-
-    subtitle_cmd = [
-        'ffmpeg', '-y',
-        '-i', temp_cropped_video,
-        '-vf', f"subtitles={temp_srt_path}:force_style='FontName=Arial,FontSize=22,PrimaryColour=&HFFFFFF,SecondaryColour=&H000000,BackColour=&H00000000,Bold=1,BorderStyle=1,Outline=2,Shadow=0,Alignment=10'",
-        '-c:v', 'libx264', '-preset', 'slow', '-crf', '18', '-profile:v', 'high',
-        '-c:a', 'copy',
-        temp_with_subs
-    ]
-
-    subprocess.run(subtitle_cmd, check=True)
-    print(f"✓ Successfully burned subtitles into video")
-
-    # Add audio to video
-    print("Adding audio to video...")
-    final_cmd = [
-        'ffmpeg', '-y',
-        '-i', temp_with_subs,
-        '-i', audio_path,
-        '-map', '0:v', '-map', '1:a',  # Use video from first input, audio from second
-        '-c:v', 'copy', '-c:a', 'aac',
-        output_path
-    ]
-    subprocess.run(final_cmd, check=True)
-    print(f"✓ Successfully added audio to video")
-
-    # Ensure video duration matches audio duration
-    ensure_matching_duration(output_path, audio_duration, temp_dir)
-
-    return output_path
+        # Run the combined FFmpeg command
+        subprocess.run(command, check=True)
+        print(f"✓ Successfully generated final video with subtitles and audio")
+        return output_path
+    except subprocess.CalledProcessError as e:
+        print(f"Error generating video: {str(e)}")
+        return None
 
 
 def extend_video(video_path, temp_dir, target_duration, video_duration):
@@ -363,32 +362,36 @@ def extend_video(video_path, temp_dir, target_duration, video_duration):
 
 
 def ensure_matching_duration(video_path, target_duration, temp_dir):
-    """Ensure video duration matches the target duration"""
+    """Ensure video duration matches the target duration with a smooth ending"""
     video_duration = get_duration(video_path)
 
-    if abs(video_duration - target_duration) > 0.5:  # Allow half second tolerance
+    # Add a longer buffer (1 second) for a smoother ending
+    target_duration_with_buffer = target_duration + 1.0
+
+    if abs(video_duration - target_duration_with_buffer) > 0.1:  # Tighter tolerance
         print(
-            f"Video duration ({video_duration:.2f}s) doesn't match target duration ({target_duration:.2f}s)")
-        print(f"Trimming video to match target duration...")
+            f"Video duration ({video_duration:.2f}s) doesn't match target duration with buffer ({target_duration_with_buffer:.2f}s)")
+        print(f"Adjusting video duration for smoother ending...")
 
-        # Create temp file for the trimmed video
-        temp_trimmed = os.path.join(temp_dir, "temp_trimmed.mp4")
+        # Create temp file for the adjusted video
+        temp_adjusted = os.path.join(temp_dir, "temp_adjusted.mp4")
 
-        # Use ffmpeg to trim the video to match audio duration
+        # Use ffmpeg to extend the video
         trim_cmd = [
             'ffmpeg', '-y',
             '-i', video_path,
-            '-t', str(target_duration),  # Duration in seconds
+            # Duration in seconds with buffer
+            '-t', str(target_duration_with_buffer),
             '-c:v', 'copy', '-c:a', 'copy',
-            temp_trimmed
+            temp_adjusted
         ]
         subprocess.run(trim_cmd, check=True)
 
-        # Replace the output file with the trimmed version
-        os.replace(temp_trimmed, video_path)
-        print(f"✓ Successfully trimmed video to match target duration")
+        # Replace the output file with the adjusted version
+        os.replace(temp_adjusted, video_path)
+        print(f"✓ Successfully adjusted video duration for smoother ending")
     else:
-        print(f"✓ Video duration already matches target duration")
+        print(f"✓ Video duration already matches target duration with buffer")
 
 
 def generate_subtitles(audio_path, text, output_path, voice="donald_trump", model="claude", api_key=None):
@@ -436,20 +439,29 @@ def process_input_text(text, output_path, voice, model, api_key):
 
     print(f"Using {model} to transform text for {voice}")
     text_path = os.path.join(os.path.dirname(output_path), f"{voice}_text.txt")
-    with open(text_path, 'w') as f:
-        f.write(text)
 
-    # Transform text if not already in the right format for the voice
     try:
-        transformed_text, _ = transform_to_brainrot(
-            text_path, api_key=api_key, voice=voice, model=model)
-    except Exception as e:
-        print(f"Error transforming text: {str(e)}")
-        print("Using original text for subtitles")
-        transformed_text = text
+        # Save original text
+        with open(text_path, 'w') as f:
+            f.write(text)
 
-    # Clean text for TTS compatibility
-    return clean_text_for_tts(transformed_text)
+        # Transform text if not already in the right format for the voice
+        if model != "bypass_transform":
+            transformed_text, _ = transform_to_brainrot(
+                text_path, api_key=api_key, voice=voice, model=model)
+        else:
+            transformed_text = text
+
+        # Clean text for subtitle generation using clean_text
+        from dict import clean_text
+        cleaned_text = clean_text(transformed_text)
+        return cleaned_text
+
+    except Exception as e:
+        print(f"Error in text processing: {str(e)}")
+        print("Using original text for subtitles")
+        from dict import clean_text
+        return clean_text(text)
 
 
 def generate_subtitles_with_gentle(audio_path, text, temp_dir):
@@ -457,11 +469,12 @@ def generate_subtitles_with_gentle(audio_path, text, temp_dir):
     print("Attempting to generate subtitles with Gentle forced alignment...")
     json_output = os.path.join(temp_dir, "alignment.json")
 
-    # Use Gentle for forced alignment
-    resources = gentle.Resources()
-    with gentle.resampled(audio_path) as wavfile:
-        aligner = gentle.ForcedAligner(resources, text)
-        result = aligner.transcribe(wavfile)
+    try:
+        # Use Gentle for forced alignment
+        resources = gentle.Resources()
+        with gentle.resampled(audio_path) as wavfile:
+            aligner = gentle.ForcedAligner(resources, text)
+            result = aligner.transcribe(wavfile)
 
         # Save alignment to JSON
         with open(json_output, 'w') as f:
@@ -472,7 +485,7 @@ def generate_subtitles_with_gentle(audio_path, text, temp_dir):
             alignment_data = json.load(f)
 
         # Build word timings
-        entries = []
+            entries = []
         for word in alignment_data.get('words', []):
             if word.get('case') == 'success':
                 start = word.get('start', 0)
@@ -487,7 +500,11 @@ def generate_subtitles_with_gentle(audio_path, text, temp_dir):
                     word_text, start_advanced, end_advanced))
 
         # Group words into phrases
-        return group_words_into_phrases(entries)
+            return group_words_into_phrases(entries)
+
+    except Exception as e:
+        print(f"Error in Gentle alignment: {str(e)}")
+        return []
 
 
 def group_words_into_phrases(word_entries, max_duration=2.5, max_words=4):
@@ -502,7 +519,6 @@ def group_words_into_phrases(word_entries, max_duration=2.5, max_words=4):
             current_start = entry.start_time
             current_phrase.append(entry.text)
             current_end = entry.end_time
-        # Maximum duration per subtitle and max words
         elif entry.end_time - current_start <= max_duration and len(current_phrase) < max_words:
             current_phrase.append(entry.text)
             current_end = entry.end_time
@@ -513,6 +529,7 @@ def group_words_into_phrases(word_entries, max_duration=2.5, max_words=4):
             current_start = entry.start_time
             current_end = entry.end_time
 
+    # Add the last phrase if there is one
     if current_phrase:
         phrases.append(SubtitleEntry(
             ' '.join(current_phrase), current_start, current_end))
@@ -523,50 +540,47 @@ def group_words_into_phrases(word_entries, max_duration=2.5, max_words=4):
 def generate_subtitles_with_simple_timing(text, audio_duration):
     """Generate subtitles with simple timing based on word count"""
     print("Using simple timing method for subtitle generation...")
-    words = text.split()
-    total_words = len(words)
-    words_per_second = total_words / max(audio_duration, 1)
 
-    # Analyze word lengths to better time subtitles
-    avg_word_length = sum(len(word) for word in words) / max(1, total_words)
+    # Split text into sentences first
+    sentences = re.split(r'[.!?]+', text)
+    sentences = [s.strip() for s in sentences if s.strip()]
+
+    # Calculate base timing
+    total_sentences = len(sentences)
+    avg_time_per_sentence = audio_duration / total_sentences
 
     entries = []
+    current_time = 0
 
-    # Create evenly spaced subtitles
-    words_per_subtitle = 3  # Reduced for better readability
-    current_word = 0
+    # Create subtitles for each sentence
+    for i, sentence in enumerate(sentences):
+        # Split sentence into words
+        words = sentence.split()
 
-    while current_word < total_words:
-        end_word = min(current_word + words_per_subtitle, total_words)
-        subtitle_text = ' '.join(words[current_word:end_word])
+        # Calculate timing for this sentence
+        start_time = current_time
+        end_time = start_time + avg_time_per_sentence
 
-        # Calculate timing more precisely based on word length
-        subtitle_words = words[current_word:end_word]
-        subtitle_word_length_ratio = sum(
-            len(word) for word in subtitle_words) / (avg_word_length * len(subtitle_words))
+        # Ensure we don't exceed audio duration
+        end_time = min(end_time, audio_duration)
 
-        # Adjust timing based on relative word length and position in audio
-        position_factor = current_word / \
-            max(1, total_words)  # 0-1 position in text
-        start_time = (current_word / words_per_second) * \
-            (0.95 + 0.1 * position_factor)
-        word_duration_factor = 1.0 + 0.2 * \
-            subtitle_word_length_ratio  # Longer words get more time
-        end_word_time = (end_word / words_per_second) * word_duration_factor
+        # Create subtitle entry
+        entries.append(SubtitleEntry(sentence, start_time, end_time))
 
-        # Apply subtitle preview buffer (show slightly earlier)
-        # Increase buffer slightly as we progress
-        preview_buffer = 0.2 + (0.1 * position_factor)
-        start_time = max(0, start_time - preview_buffer)
-        # Ensure minimum duration, end slightly earlier
-        end_time = max(start_time + 0.3, end_word_time - 0.1)
+        # Update current time for next sentence
+        current_time = end_time
 
-        # Ensure minimum duration
-        if end_time - start_time < 0.5:
-            end_time = start_time + 0.5
+        # Add a small gap between sentences
+        if i < len(sentences) - 1:  # Don't add gap after the last sentence
+            current_time += 0.2  # 0.2 second gap between sentences
 
-        entries.append(SubtitleEntry(subtitle_text, start_time, end_time))
-        current_word = end_word
+    # Ensure no overlaps and proper spacing
+    for i in range(len(entries) - 1):
+        # If current subtitle overlaps with next one
+        if entries[i].end_time > entries[i + 1].start_time:
+            # Add a small gap between subtitles
+            gap = 0.1
+            entries[i].end_time = entries[i + 1].start_time - gap
 
     return entries
 
@@ -580,14 +594,18 @@ def create_ass_subtitle_file(subtitle_entries, output_path, audio_duration):
         f.write('ScriptType: v4.00+\n')
         f.write('WrapStyle: 0\n')
         f.write('ScaledBorderAndShadow: yes\n')
-        f.write('YCbCr Matrix: None\n')
-        f.write('PlayResX: 720\n')
-        f.write('PlayResY: 1280\n\n')
+        f.write('YCbCr Matrix: TV.601\n')
+        f.write(f'PlayResX: {VIDEO_CONFIG["width"]}\n')
+        f.write(f'PlayResY: {VIDEO_CONFIG["height"]}\n\n')
 
-        # Write styles with white text and black border, no background
+        # Write styles
         f.write('[V4+ Styles]\n')
         f.write('Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding\n')
-        f.write('Style: Default,Arial,80,&H00FFFFFF,&H000000FF,&H00000000,&H00000000,-1,0,0,0,100,100,0,0,1,2,0,5,10,10,10,1\n\n')
+
+        # Write each style from configuration
+        for style_name, style_config in SUBTITLE_STYLES.items():
+            f.write(generate_ass_style_line(style_name, style_config) + '\n')
+        f.write('\n')
 
         # Write events
         f.write('[Events]\n')
@@ -598,8 +616,19 @@ def create_ass_subtitle_file(subtitle_entries, output_path, audio_duration):
         for entry in subtitle_entries:
             start_time = format_time_ass(entry.start_time)
             end_time = format_time_ass(entry.end_time)
-            f.write(
-                f'Dialogue: 0,{start_time},{end_time},Default,,0,0,0,,{entry.text}\n')
+
+            # Determine if this is a special effect
+            is_effect = entry.text.startswith('(') and entry.text.endswith(')')
+            style = "Effects" if is_effect else "Default"
+
+            # For effects, make them invisible
+            if is_effect:
+                text = "{\\alpha&HFF&}" + entry.text
+            else:
+                text = entry.text
+
+                f.write(
+                    f'Dialogue: 0,{start_time},{end_time},{style},,0,0,0,,{text}\n')
 
         # Add a final empty subtitle if needed to match audio duration
         if subtitle_entries:
@@ -629,10 +658,10 @@ def ensure_strictly_sequential_subtitles(entries):
 
     # Voice-specific timing adjustments - different TTS engines have slightly different timing characteristics
     VOICE_SYNC_ADJUSTMENTS = {
-        "donald_trump": -0.15,  # Trump voice tends to start slightly late
-        "andrew_tate": -0.3,    # Tate voice needs more lead time
-        "mario": -0.25,         # Mario voice needs more lead time
-        "default": -0.2         # Default adjustment
+        "donald_trump": -0.35,  # Increased lead time for Trump voice
+        "andrew_tate": -0.4,    # Increased lead time for Tate voice
+        "mario": -0.35,         # Increased lead time for Mario voice
+        "default": -0.3         # Increased default lead time
     }
 
     # Try to detect voice from the first entry's text if possible
@@ -667,8 +696,7 @@ def ensure_strictly_sequential_subtitles(entries):
 
             # Determine optimal chunk size based on content
             if is_question:
-                # Smaller chunks for questions (need more time to process)
-                chunk_size = 2
+                chunk_size = 2  # Smaller chunks for questions (need more time)
             elif any(len(word) > 8 for word in words):
                 chunk_size = 2  # Smaller chunks for content with long words
             else:
@@ -686,11 +714,12 @@ def ensure_strictly_sequential_subtitles(entries):
                 # Calculate smart preview buffer based on content
                 content_complexity = sum(
                     len(word) for word in chunk_words) / (5 * len(chunk_words))
-                preview_buffer = 0.2 + (0.1 * min(1.0, content_complexity))
+                # Increased preview buffer
+                preview_buffer = 0.3 + (0.15 * min(1.0, content_complexity))
 
                 # Calculate start time with voice-specific adjustment
-                chunk_start = max(0, entry.start_time + (i //
-                                  chunk_size) * chunk_duration + voice_offset)
+                chunk_start = max(0, entry.start_time + (i // chunk_size)
+                                  * chunk_duration + voice_offset - preview_buffer)
 
                 # Dynamic duration based on content
                 duration_factor = 1.0
@@ -699,9 +728,9 @@ def ensure_strictly_sequential_subtitles(entries):
                 elif any(len(word) > 8 for word in chunk_words):
                     duration_factor = 1.15  # Long words need more time
 
-                # Apply dynamic duration
-                adjusted_duration = chunk_duration * duration_factor
-                chunk_end = chunk_start + adjusted_duration + 0.15
+                # Apply dynamic duration with minimum duration
+                adjusted_duration = max(0.6, chunk_duration * duration_factor)
+                chunk_end = chunk_start + adjusted_duration
 
                 chunked_entries.append(SubtitleEntry(
                     chunk_text, chunk_start, chunk_end))
@@ -709,10 +738,12 @@ def ensure_strictly_sequential_subtitles(entries):
             # Keep short entries as they are, but add smart preview buffer
             complexity = sum(len(word)
                              for word in words) / (5 * max(1, len(words)))
-            preview_buffer = 0.2 + (0.1 * min(1.0, complexity))
+            # Increased preview buffer
+            preview_buffer = 0.3 + (0.15 * min(1.0, complexity))
 
-            # Apply voice-specific adjustment
-            adjusted_start = max(0, entry.start_time + voice_offset)
+            # Apply voice-specific adjustment with preview buffer
+            adjusted_start = max(0, entry.start_time +
+                                 voice_offset - preview_buffer)
 
             # Determine optimal duration based on content
             duration_factor = 1.0
@@ -721,92 +752,57 @@ def ensure_strictly_sequential_subtitles(entries):
             elif any(len(word) > 8 for word in words):
                 duration_factor = 1.15
 
-            adjusted_duration = (
-                entry.end_time - entry.start_time) * duration_factor
-
+            # Apply duration with minimum duration
+            adjusted_duration = max(
+                0.6, (entry.end_time - entry.start_time) * duration_factor)
             modified_entry = SubtitleEntry(
                 entry.text,
                 adjusted_start,
-                adjusted_start + adjusted_duration + 0.1
+                adjusted_start + adjusted_duration
             )
             chunked_entries.append(modified_entry)
 
     # Use the chunked entries instead
     sorted_entries = sorted(chunked_entries, key=lambda e: e.start_time)
 
-    # Dynamic gap calculation helper
-    def calculate_optimal_gap(current_entry, next_entry):
-        """Calculate optimal gap between subtitles based on content"""
-        current_words = current_entry.text.split()
-        next_words = next_entry.text.split()
+    # Add a natural ending sequence
+    if sorted_entries:
+        last_entry = sorted_entries[-1]
 
-        # Calculate complexity of transition
-        current_complexity = sum(
-            len(word) for word in current_words) / max(1, len(current_words))
-        next_complexity = sum(len(word)
-                              for word in next_words) / max(1, len(next_words))
+        # Check if the last entry ends with punctuation
+        ends_with_punctuation = any(
+            last_entry.text.rstrip().endswith(p) for p in '.!?')
 
-        # More complex transitions need slightly bigger gaps
-        complexity_factor = (current_complexity + next_complexity) / 10
+        # Calculate ending pause duration based on content
+        word_count = len(last_entry.text.split())
+        word_complexity = sum(
+            len(word) for word in last_entry.text.split()) / max(1, word_count)
 
-        # If current entry ends with sentence-ending punctuation, slightly larger gap
-        ends_sentence = any(current_entry.text.rstrip().endswith(p)
-                            for p in '.!?')
-        sentence_factor = 0.05 if ends_sentence else 0.0
+        # Give more time for the final subtitle
+        if "subscribe" in last_entry.text.lower():
+            # Extra time for call-to-action
+            base_ending_pause = 1.5
+            complexity_factor = 0.5
+        else:
+            # Longer pause for complex endings or sentences
+            base_ending_pause = 1.2 if ends_with_punctuation else 1.0
+            complexity_factor = min(0.5, word_complexity * 0.2)
 
-        # Base gap plus adjustments
-        return min(0.15, max(0.05, 0.08 + complexity_factor + sentence_factor))
+        ending_pause = base_ending_pause + complexity_factor
 
-    # Adjust all timing to ensure sequential display
-    for i in range(len(sorted_entries) - 1):
-        # Force end of current subtitle to be start of next
-        if sorted_entries[i].end_time >= sorted_entries[i+1].start_time:
-            # Calculate optimal gap based on content
-            gap = calculate_optimal_gap(sorted_entries[i], sorted_entries[i+1])
+        # Add a longer breath effect after the last subtitle
+        breath_start = last_entry.end_time + 0.3
+        breath_duration = 0.5
+        breath_entry = SubtitleEntry(
+            "(breath)", breath_start, breath_start + breath_duration)
+        sorted_entries.append(breath_entry)
 
-            # If we're pushing the next subtitle's start time, adjust it
-            if sorted_entries[i].end_time > sorted_entries[i+1].start_time:
-                sorted_entries[i +
-                               1].start_time = sorted_entries[i].end_time + gap
-
-                # Ensure minimum duration for each subtitle (based on content complexity)
-                word_count = len(sorted_entries[i+1].text.split())
-                word_complexity = sum(
-                    len(word) for word in sorted_entries[i+1].text.split()) / max(1, word_count)
-                min_duration = max(0.3, word_count * 0.15 *
-                                   (1 + word_complexity/10))
-
-                sorted_entries[i+1].end_time = max(
-                    sorted_entries[i+1].end_time,
-                    sorted_entries[i+1].start_time + min_duration
-                )
-            else:
-                # Just add a gap after the current subtitle
-                sorted_entries[i].end_time = sorted_entries[i +
-                                                            1].start_time - gap
-
-    # Verify no overlaps and print timing for debugging
-    print("Subtitle timing (sequential order):")
-    for i, entry in enumerate(sorted_entries):
-        print(
-            f"  {i+1}: {format_time_ass(entry.start_time)} - {format_time_ass(entry.end_time)} : {entry.text[:30]}...")
-
-        # Ensure minimum duration (adaptive based on content)
-        words = entry.text.split()
-        word_count = len(words)
-        word_complexity = sum(len(word) for word in words) / max(1, word_count)
-        has_punctuation = any(p in entry.text for p in '.,:;?!')
-
-        # Adjust minimum duration based on content characteristics
-        min_duration = max(0.3, word_count * 0.15 *
-                           (1 + 0.1 * word_complexity))
-        if has_punctuation:
-            min_duration *= 1.1  # Allow more time for sentences with punctuation
-
-        if entry.end_time - entry.start_time < min_duration:
-            entry.end_time = entry.start_time + min_duration
-            print(
-                f"    Fixed short duration for subtitle {i+1} (word count: {word_count}, complexity: {word_complexity:.2f})")
+        # Add a final pause entry for a smooth ending
+        pause_start = breath_start + breath_duration
+        pause_duration = ending_pause
+        pause_entry = SubtitleEntry(
+            "", pause_start, pause_start + pause_duration)
+        sorted_entries.append(pause_entry)
 
     return sorted_entries
 
@@ -814,18 +810,45 @@ def ensure_strictly_sequential_subtitles(entries):
 def create_srt_subtitle_file(subtitle_entries, output_path):
     """Create an SRT subtitle file from subtitle entries"""
     with open(output_path, 'w', encoding='utf-8') as f:
+        # Write header with transparency style
+        f.write("""[Script Info]
+Title: Generated Subtitles
+ScriptType: v4.00+
+WrapStyle: 0
+ScaledBorderAndShadow: yes
+YCbCr Matrix: TV.601
+PlayResX: 1080
+PlayResY: 1920
+
+[V4+ Styles]
+Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding
+Style: Default,Arial,80,&H00FFFFFF,&H000000FF,&H00000000,&H00000000,-1,0,0,0,100,100,0,0,1,2,0,5,10,10,10,1
+Style: Effects,Arial,80,&H00FFFFFF,&H000000FF,&H00000000,&H00000000,-1,0,0,0,100,100,0,0,1,0,0,5,10,10,10,1
+
+[Events]
+Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
+""")
+
         for i, entry in enumerate(subtitle_entries):
-            # Convert seconds to SRT time format (HH:MM:SS,mmm)
+            # Convert seconds to ASS time format (HH:MM:SS,mmm)
             start_time_str = seconds_to_srt_time(entry.start_time)
             end_time_str = seconds_to_srt_time(entry.end_time)
 
-            # All text is white now
-            styled_text = entry.text
+            # Check if this is a special effect entry (like breath)
+            is_effect = entry.text.startswith('(') and entry.text.endswith(')')
+
+            # Use transparent style for effects, regular style for normal text
+            style = "Effects" if is_effect else "Default"
+
+            # For effects, make them invisible by using alpha channel
+            if is_effect:
+                text = "{\\alpha&HFF&}" + entry.text
+            else:
+                text = entry.text
 
             # Write subtitle entry
-            f.write(f"{i+1}\n")
-            f.write(f"{start_time_str} --> {end_time_str}\n")
-            f.write(f"{styled_text}\n\n")
+            f.write(
+                f"Dialogue: 0,{start_time_str},{end_time_str},{style},,0,0,0,,{text}\n")
 
     print(f"Created SRT subtitle file with {len(subtitle_entries)} entries")
     return output_path
@@ -885,4 +908,5 @@ def adjust_subtitles_with_silence_data(subtitle_entries, silence_periods, audio_
 
 # Only trim video if this file is run directly
 if __name__ == "__main__":
-    trim_video('assets/minecraft.mp4', 'assets/trimed.mp4', duration=120)
+    trim_video('assets/videos/minecraft.mp4',
+               'assets/trimed.mp4', duration=120)

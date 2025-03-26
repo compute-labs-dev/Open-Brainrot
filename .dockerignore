@@ -1,0 +1,63 @@
+# Version control
+.git
+.gitignore
+
+# Python
+__pycache__
+*.pyc
+*.pyo
+*.pyd
+.Python
+env/
+venv/
+.venv/
+pip-log.txt
+pip-delete-this-directory.txt
+.tox/
+.coverage
+.coverage.*
+.cache
+nosetests.xml
+coverage.xml
+*.cover
+*.log
+.pytest_cache/
+
+# Environment variables
+.env
+.env.*
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Project specific
+tests/
+test_*.py
+*.test.py
+outputs/*
+!outputs/.gitkeep
+temp/*
+!temp/.gitkeep
+audio/*
+!audio/.gitkeep
+final/*
+!final/.gitkeep
+texts/*
+!texts/.gitkeep
+
+# Documentation
+*.md
+!README.md
+LICENSE.md
+
+# Development
+*.bak
+*.tmp
+*.temp 

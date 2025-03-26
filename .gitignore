@@ -22,11 +22,11 @@ texts/*
 # Don't ignore files ending with _example.ass
 !texts/*_example.ass
 
-
+temp/
+temp/*
 final/*.mp4
 assets/*.mp4
 .venv/
 __pycache__/
 *.pyc
-
 outputs/*

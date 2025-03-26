@@ -63,7 +63,7 @@ The subtitles should be visible in the final video."""
                 audio_path, output_path=temp_audio_path, silence_duration=500)
             audio_path = temp_audio_path
 
-            video_path = "assets/minecraft.mp4"  # Use a default video file
+            video_path = "assets/videos/minecraft.mp4"  # Use a default video file
             if not os.path.exists(video_path):
                 print(f"❌ Default video file not found: {video_path}")
                 print("Please specify a valid video file path")

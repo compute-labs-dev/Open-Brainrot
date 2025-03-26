@@ -30,37 +30,18 @@ class TTSRequest(BaseModel):
 
 
 VOICE_IDS = {
-    "donald_trump": "5196af35f6ff4a0dbf541793fc9f2157",
-    "elon_musk": "03397b4c4be74759b72533b663fbd001",
-    "cristiano_ronaldo": "86304d8fa1734bd89291acf4060d8a5e",
-    "joe_biden": "9b42223616644104a4534968cd612053",
-    "barack_obama": "4ce7e917cedd4bc2bb2e6ff3a46acaa1",
-    "robert_downey_jr": "256e1a3007a74904a91d132d1e9bf0aa",
-    "andrew_tate": "a4d46c9bdf1f40f9a6354f1423d53cc3",
-    "rick_sanchez": "d2e75a3e3fd6419893057c02a375a113",
-    "morty_smith": "3d445d095ba04681bcba7177faedf55a",
-    "walter_cronkite": "d204ec5aad8d4ee080c6a5341e84bdbf",
-    "portals_glados": "ee885900b0874d12b1c3439d1e56cc95",
-    "southpark_eric_cartman": "b4f55643a15944e499defe42964d2ebf",
-    "kermit_the_frog": "e4ab98de928a4791a8613f102caae78a",
-    "yelling_kermit": "e4ab98de928a4791a8613f102caae78a",
-    "keanu_reeves": "c69fea85f15f4c809be8f52ddbb09709",
-    "fireship": "4dbf597a6a134c94b53d2830d67aabd8"
+    "donald_trump": "5196af35f6ff4a0dbf541793fc9f2157",  # 0
+    "walter_cronkite": "d204ec5aad8d4ee080c6a5341e84bdbf",  # 1
+    "southpark_eric_cartman": "b4f55643a15944e499defe42964d2ebf",  # 2
+    "keanu_reeves": "c69fea85f15f4c809be8f52ddbb09709",  # 3
+    "fireship": "4dbf597a6a134c94b53d2830d67aabd8"  # 4
 }
 
 
 VOICE_SPEEDS = {
     "donald_trump": 1.0,
-    "elon_musk": 1.25,
-    "andrew_tate": 1.25,
-    "barack_obama": 1.25,
-    "rick_sanchez": 1.25,
-    "morty_smith": 1.25,
     "walter_cronkite": 1.25,
-    "portals_glados": 1.25,
     "southpark_eric_cartman": 1.25,
-    "kermit_the_frog": 1.25,
-    "yelling_kermit": 1.25,
     "keanu_reeves": 1.25,
     "fireship": 1.3,
     "default": 0.9
@@ -99,9 +80,13 @@ async def generate_voice(text, voice_id, output_path="audio/output.mp3", max_ret
 
     retries = 0
     last_error = None
+    max_timeout = timeout  # Store original timeout
 
     while retries < max_retries:
         try:
+            # Increase timeout with each retry
+            current_timeout = timeout * (retries + 1)
+
             # Get voice-specific speed or use default
             speed = VOICE_SPEEDS.get(voice_name, VOICE_SPEEDS["default"])
             logger.info(f"{log_prefix} Using voice speed: {speed}")
@@ -111,8 +96,7 @@ async def generate_voice(text, voice_id, output_path="audio/output.mp3", max_ret
                 reference_id=voice_id,
                 chunk_length=200,
                 mp3_bitrate=192,
-                # normalize=True,
-                model="speech-1.6",  # Required model parameter
+                model="speech-1.6",
                 prosody={
                     "speed": speed,
                 }
@@ -121,13 +105,14 @@ async def generate_voice(text, voice_id, output_path="audio/output.mp3", max_ret
             headers = {
                 "Authorization": f"Bearer {api_key}",
                 "Content-Type": "application/json",
-                "model": "speech-1.6"  # Also include in headers
+                "model": "speech-1.6"
             }
 
             logger.info(
-                f"{log_prefix} Making API request to Fish Audio (attempt {retries+1}/{max_retries})")
+                f"{log_prefix} Making API request to Fish Audio (attempt {retries+1}/{max_retries}, timeout: {current_timeout}s)")
+
             # Use context manager to ensure client is properly closed
-            async with get_httpx_client(timeout=timeout) as client:
+            async with get_httpx_client(timeout=current_timeout) as client:
                 start_time = time.time()
                 try:
                     async with client.stream(
@@ -135,7 +120,7 @@ async def generate_voice(text, voice_id, output_path="audio/output.mp3", max_ret
                         "https://api.fish.audio/v1/tts",
                         json=request.model_dump(),
                         headers=headers,
-                        timeout=timeout
+                        timeout=current_timeout
                     ) as response:
                         if response.status_code != 200:
                             error_text = await response.aread()
@@ -146,19 +131,37 @@ async def generate_voice(text, voice_id, output_path="audio/output.mp3", max_ret
                             raise Exception(
                                 f"Fish Audio API error: {response.status_code}")
 
-                        logger.info(
-                            f"{log_prefix} Received successful response, writing to file")
-                        with open(output_path, "wb") as f:
-                            async for chunk in response.aiter_bytes():
-                                f.write(chunk)
+                        # Create a temporary file first
+                        temp_path = output_path + '.tmp'
+                        try:
+                            logger.info(
+                                f"{log_prefix} Received successful response, writing to temporary file")
+                            with open(temp_path, "wb") as f:
+                                async for chunk in response.aiter_bytes():
+                                    f.write(chunk)
 
-                    duration = time.time() - start_time
-                    logger.info(
-                        f"{log_prefix} API request completed in {duration:.2f} seconds")
-                    return output_path
+                            # Verify the file was written successfully
+                            if os.path.getsize(temp_path) == 0:
+                                raise Exception(
+                                    "Generated audio file is empty")
+
+                            # Move the temporary file to the final location
+                            os.replace(temp_path, output_path)
+
+                        except Exception as e:
+                            # Clean up temporary file if it exists
+                            if os.path.exists(temp_path):
+                                os.remove(temp_path)
+                            raise
+
+                        duration = time.time() - start_time
+                        logger.info(
+                            f"{log_prefix} API request completed in {duration:.2f} seconds")
+                        return output_path
+
                 except httpx.TimeoutException:
                     logger.warning(
-                        f"{log_prefix} Request timed out after {timeout} seconds")
+                        f"{log_prefix} Request timed out after {current_timeout} seconds")
                     raise
 
         except Exception as e:
@@ -177,8 +180,10 @@ async def generate_voice(text, voice_id, output_path="audio/output.mp3", max_ret
                 break
 
     # If we got here, all retries failed
-    raise last_error or Exception(
-        "Failed to generate voice after multiple attempts")
+    error_msg = f"[{voice_name}] Failed to generate voice after {max_retries} attempts"
+    if last_error:
+        error_msg += f": {str(last_error)}"
+    raise Exception(error_msg)
 
 
 async def audio(text_file_path, file_path="audio/output.wav", voice="donald_trump"):
@@ -298,31 +303,95 @@ def convert_audio(input_path, output_path):
     logger.info(
         f"{log_prefix} Converting audio to 16kHz mono: {input_path} -> {output_path}")
 
+    # Verify input file exists and is not empty
+    if not os.path.exists(input_path):
+        raise FileNotFoundError(
+            f"{log_prefix} Input file not found: {input_path}")
+
+    if os.path.getsize(input_path) == 0:
+        raise ValueError(f"{log_prefix} Input file is empty: {input_path}")
+
     try:
-        command = [
-            'ffmpeg',
-            '-i', input_path,
-            '-ac', '1',  # Set to mono
-            '-ar', '16000',  # Set to 16kHz
-            '-sample_fmt', 's16',  # Set to 16-bit
-            '-y',  # Overwrite output file
-            output_path
-        ]
+        # Create output directory if it doesn't exist
+        os.makedirs(os.path.dirname(output_path), exist_ok=True)
 
-        # Capture output for better logging
-        result = subprocess.run(command, check=True,
-                                capture_output=True, text=True)
+        # First convert to WAV with standard parameters
+        temp_wav = output_path + '.temp.wav'
+        temp_wav2 = output_path + '.temp2.wav'
 
-        if result.stderr:
-            logger.debug(f"{log_prefix} ffmpeg output: {result.stderr}")
+        try:
+            # First conversion: to standard WAV
+            command = [
+                'ffmpeg',
+                '-y',  # Overwrite output file
+                '-i', input_path,
+                '-acodec', 'pcm_s16le',  # Force PCM 16-bit encoding
+                '-ar', '44100',          # Standard sample rate
+                '-ac', '2',              # Stereo
+                temp_wav
+            ]
 
-        logger.info(f"{log_prefix} AUDIO CONVERSION DONE!")
-        return output_path
+            # Capture output for better logging
+            result = subprocess.run(command, check=True,
+                                    capture_output=True, text=True)
+
+            if result.stderr:
+                logger.debug(
+                    f"{log_prefix} ffmpeg output (step 1): {result.stderr}")
+
+            # Verify the intermediate file was created
+            if not os.path.exists(temp_wav) or os.path.getsize(temp_wav) == 0:
+                raise Exception(
+                    "First conversion failed to produce valid output")
+
+            # Second conversion: to final format
+            command = [
+                'ffmpeg',
+                '-y',  # Overwrite output file
+                '-i', temp_wav,
+                '-ac', '1',              # Convert to mono
+                '-ar', '16000',          # Convert to 16kHz
+                '-sample_fmt', 's16',    # 16-bit
+                temp_wav2
+            ]
+
+            result = subprocess.run(command, check=True,
+                                    capture_output=True, text=True)
+
+            if result.stderr:
+                logger.debug(
+                    f"{log_prefix} ffmpeg output (step 2): {result.stderr}")
+
+            # Verify the second intermediate file was created
+            if not os.path.exists(temp_wav2) or os.path.getsize(temp_wav2) == 0:
+                raise Exception(
+                    "Second conversion failed to produce valid output")
+
+            # Move the final file to its destination
+            os.replace(temp_wav2, output_path)
+
+            logger.info(f"{log_prefix} AUDIO CONVERSION DONE!")
+            return output_path
+
+        finally:
+            # Clean up temporary files
+            for temp_file in [temp_wav, temp_wav2]:
+                try:
+                    if os.path.exists(temp_file):
+                        os.remove(temp_file)
+                except Exception as e:
+                    logger.warning(
+                        f"{log_prefix} Failed to remove temporary file {temp_file}: {str(e)}")
 
     except subprocess.CalledProcessError as e:
-        logger.error(f"{log_prefix} Error during audio conversion: {e.stderr}")
-        raise
+        error_msg = f"{log_prefix} FFmpeg error during audio conversion:\n"
+        if e.stderr:
+            error_msg += f"stderr: {e.stderr}\n"
+        if e.stdout:
+            error_msg += f"stdout: {e.stdout}\n"
+        logger.error(error_msg)
+        raise Exception(error_msg)
     except Exception as e:
-        logger.error(
-            f"{log_prefix} Unexpected error during audio conversion: {str(e)}")
+        error_msg = f"{log_prefix} Unexpected error during audio conversion: {str(e)}"
+        logger.error(error_msg)
         raise

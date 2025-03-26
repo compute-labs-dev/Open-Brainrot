@@ -1,0 +1,18 @@
+services:
+  brainrot:
+    build: .
+    ports:
+      - "5500:5500"
+    volumes:
+      - ./outputs:/app/outputs
+      - ./temp:/app/temp
+      - ./assets:/app/assets
+    environment:
+      - PYTHONUNBUFFERED=1
+      - TZ=America/Los_Angeles
+    healthcheck:
+      test: [ "CMD", "curl", "-f", "http://localhost:5500/health" ]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    restart: unless-stopped

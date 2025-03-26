@@ -1,66 +1,68 @@
-# Start with PyTorch image that includes CUDA support
-FROM pytorch/pytorch:2.1.0-cuda12.1-cudnn8-runtime
+# Build stage
+FROM python:3.10-slim as builder
 
 # Set environment variables
-ENV PYTHONDONTWRITEBYTECODE=1
-ENV PYTHONUNBUFFERED=1
-# Add these lines to make apt non-interactive
-ENV DEBIAN_FRONTEND=noninteractive
-ENV TZ=America/Los_Angeles
+ENV PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONUNBUFFERED=1 \
+    DEBIAN_FRONTEND=noninteractive \
+    TZ=America/Los_Angeles \
+    PIP_DEFAULT_TIMEOUT=1000 \
+    PIP_DISABLE_PIP_VERSION_CHECK=1 \
+    PIP_NO_CACHE_DIR=1
 
-# Install system dependencies
-RUN apt-get update && apt-get install -y \
+# Install minimal system dependencies
+RUN apt-get update && apt-get install -y --no-install-recommends \
     ffmpeg \
     libsndfile1 \
-    git \
-    wget \
+    && apt-get clean \
+    && rm -rf /var/lib/apt/lists/*
+
+# Create app directory and required subdirectories
+WORKDIR /app
+RUN mkdir -p texts audio final outputs temp assets/videos && \
+    touch outputs/.gitkeep temp/.gitkeep
+
+# Copy requirements first to leverage Docker cache
+COPY requirements.txt .
+
+# Install Python dependencies and ensure NLTK data is downloaded correctly
+RUN pip install --no-cache-dir --timeout 1000 torch==2.1.2 torchaudio==2.1.2 --index-url https://download.pytorch.org/whl/cpu && \
+    pip install --no-cache-dir -r requirements.txt && \
+    python -c "import nltk; nltk.download('vader_lexicon', download_dir='/usr/local/share/nltk_data')" && \
+    ls -la /usr/local/share/nltk_data || exit 1
+
+# Copy the application code
+COPY . .
+
+# Create startup script
+RUN echo '#!/bin/bash\n\
+    mkdir -p /app/assets/videos\n\
+    python run.py' > /app/startup.sh && \
+    chmod +x /app/startup.sh
+
+# Final stage
+FROM python:3.10-slim
+
+# Set environment variables
+ENV PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONUNBUFFERED=1 \
+    DEBIAN_FRONTEND=noninteractive \
+    TZ=America/Los_Angeles
+
+# Install minimal system dependencies
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    ffmpeg \
+    libsndfile1 \
     && apt-get clean \
     && rm -rf /var/lib/apt/lists/*
 
 # Create app directory
 WORKDIR /app
 
-# Create required directories
-RUN mkdir -p texts audio final outputs temp assets images default_assets
-
-# Copy requirements file first to leverage Docker cache
-COPY requirements.txt .
-
-# Install Python dependencies BEFORE using nltk
-RUN pip install -r requirements.txt
-
-# Download necessary NLTK data AFTER installing nltk
-RUN python -c "import nltk; nltk.download('vader_lexicon')"
-
-# Copy asset files to default_assets directory
-COPY assets/minecraft.mp4 /app/default_assets/minecraft.mp4
-COPY assets/subway.mp4 /app/default_assets/subway.mp4
-COPY assets/default.mp3 /app/default_assets/default.mp3
-
-# Copy the rest of the application code
-COPY . .
-
-# Create Force Alignment patch - make IPython import optional
-RUN sed -i 's/import IPython/try:\n    import IPython\n    HAS_IPYTHON = True\nexcept ImportError:\n    HAS_IPYTHON = False/' force_alignment.py
-
-# Add a startup script to copy default assets if /app/assets is empty
-RUN echo '#!/bin/bash\n\
-    if [ ! -f /app/assets/minecraft.mp4 ]; then\n\
-    echo "Copying default minecraft.mp4..."\n\
-    cp /app/default_assets/minecraft.mp4 /app/assets/ || echo "Failed to copy minecraft.mp4"\n\
-    fi\n\
-    if [ ! -f /app/assets/subway.mp4 ]; then\n\
-    echo "Copying default subway.mp4..."\n\
-    cp /app/default_assets/subway.mp4 /app/assets/ || echo "Failed to copy subway.mp4"\n\
-    fi\n\
-    if [ ! -f /app/assets/default.mp3 ]; then\n\
-    echo "Copying default audio file..."\n\
-    cp /app/default_assets/default.mp3 /app/assets/ || echo "Failed to copy default.mp3"\n\
-    fi\n\
-    python server.py\n' > /app/startup.sh && chmod +x /app/startup.sh
-
-# Ensure all directories exist and have correct permissions
-RUN chmod -R 755 .
+# Copy from builder stage
+COPY --from=builder /app /app
+COPY --from=builder /usr/local/share/nltk_data /usr/local/share/nltk_data
+COPY --from=builder /usr/local/lib/python3.10/site-packages /usr/local/lib/python3.10/site-packages
 
 # Expose port
 EXPOSE 5500

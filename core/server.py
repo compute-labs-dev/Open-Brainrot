@@ -1,13 +1,13 @@
 from flask import Flask, request, jsonify, render_template, send_from_directory
 from flask_cors import CORS  # Add CORS support
-from audio import VOICE_IDS
-from brainrot_generator import MODELS, VOICE_STYLES
-from main import main
+from core.db_client import SupabaseClient
+from utils.audio import VOICE_IDS
+from generators.brainrot_generator import MODELS, VOICES, VOICE_PROMPTS
+from core.main import main
 import os
 import tempfile
 import traceback  # Add this for better error tracking
 from dotenv import load_dotenv
-from db_client import SupabaseClient
 from datetime import datetime
 import json
 import re
@@ -18,6 +18,7 @@ import threading
 import multiprocessing
 import uuid
 from multiprocessing import Pool
+from concurrent.futures import ThreadPoolExecutor
 
 # Configure logging
 logging.basicConfig(
@@ -48,15 +49,14 @@ try:
         print(
             f"Supabase URL: {os.getenv('NEXT_PUBLIC_SUPABASE_URL', 'Not set')[:10]}...")
         print(
-            f"Supabase key: {os.getenv('SUPABASE_SERVICE_ROLE_KEY', 'Not set')[:5]}...")
-        print(f"Supabase client initialized with: {db.__class__.__name__}")
+            f"Supabase Key: {os.getenv('SUPABASE_KEY', 'Not set')[:10]}...")
 except Exception as e:
     SUPABASE_ENABLED = False
-    print(f"Failed to initialize Supabase client: {str(e)}")
+    print(f"Failed to initialize Supabase client: {e}")
 
 # Available background videos
 AVAILABLE_VIDEOS = {
-    "minecraft": "assets/minecraft.mp4",
+    "minecraft": "assets/videos/minecraft.mp4",
     "subway": "assets/subway.mp4"
 }
 
@@ -70,7 +70,7 @@ if AWS_ACCESS_KEY_ID and AWS_SECRET_ACCESS_KEY:
 def check_required_files():
     """Check if all required files and directories exist"""
     required_files = {
-        'assets/minecraft.mp4': 'Minecraft background video file',
+        'assets/videos/minecraft.mp4': 'Minecraft background video file',
         'assets/subway.mp4': 'Subway background video file',
         'assets/default.mp3': 'Default audio file'
     }
@@ -247,8 +247,8 @@ def process_voice(voice, text, word_count, digest_id, title, description, model,
         process_start = datetime.now()
 
         # Import references for access to global variables
-        from main import main
-        from brainrot_generator import MODELS, VOICE_STYLES
+        from core.main import main
+        from generators.brainrot_generator import MODELS, VOICES, VOICE_PROMPTS
 
         # Get the video path
         available_video_path = AVAILABLE_VIDEOS[video]
@@ -537,10 +537,10 @@ def generate():
         return jsonify({'error': f'Invalid video. Available videos: {list(AVAILABLE_VIDEOS.keys())}'}), 400
 
     for voice in voices:
-        if voice not in VOICE_STYLES:
+        if voice not in VOICES:
             logger.error(
-                f"Invalid voice selection: {voice}. Available: {list(VOICE_STYLES.keys())}")
-            return jsonify({'error': f'Invalid voice. Available voices: {list(VOICE_STYLES.keys())}'}), 400
+                f"Invalid voice selection: {voice}. Available: {list(VOICES.keys())}")
+            return jsonify({'error': f'Invalid voice. Available voices: {list(VOICES.keys())}'}), 400
 
     # Check required API keys
     missing_keys = []
@@ -638,147 +638,182 @@ def generate():
 @app.route('/process-digests', methods=['POST'])
 def process_digests():
     """Process digests without videos and generate videos for them"""
-    if not SUPABASE_ENABLED:
-        return jsonify({'error': 'Supabase integration is not enabled'}), 500
-
     try:
         data = request.get_json()
-        limit = data.get('limit', 1)
-        voices = data.get('voices', ['donald_trump'])
-        model = data.get('model', 'o3mini')
-        video = data.get('video', 'minecraft')
+        if not data:
+            return jsonify({'error': 'No data provided'}), 400
 
-        # Get digests without videos
-        digests = db.get_digests_without_videos(limit)
+        # Extract parameters
+        digest_ids = data.get('digest_ids', [])
+        voices = data.get('voices', [])
+        video = data.get('video', 'minecraft')  # Default to minecraft
+        model = data.get('model', 'claude')  # Default to claude
 
-        if not digests:
-            return jsonify({'message': 'No digests found without videos'}), 200
+        if not digest_ids:
+            return jsonify({'error': 'No digest IDs provided'}), 400
+        if not voices:
+            return jsonify({'error': 'No voices specified'}), 400
 
-        results = []
+        # Initialize database connection
+        db = SupabaseClient()
 
-        for digest in digests:
-            digest_id = digest['id']
-            content = digest.get('content', '')
+        # Store results for each digest
+        all_results = []
 
-            if not content:
-                results.append({
-                    'digest_id': digest_id,
-                    'status': 'error',
-                    'message': 'Digest has no content'
-                })
+        # Process each digest
+        for digest_id in digest_ids:
+            # Get digest content
+            digest = db.get_digest_by_id(digest_id)
+            if not digest:
                 continue
 
-            # Create temporary file for text
-            with tempfile.NamedTemporaryFile(mode='w', suffix='.txt', delete=False) as temp_file:
-                temp_file.write(content)
-                temp_path = temp_file.name
+            content = digest.get('content', '')
+            if not content:
+                continue
 
+            # Create temporary file for the content
+            temp_path = create_temp_file(content)
             digest_results = []
 
-            # Generate video for each voice
-            for voice in voices:
-                try:
-                    # Generate timestamp for consistent directory naming
-                    timestamp = int(time.time())
+            # Process videos concurrently using ThreadPoolExecutor
+            with ThreadPoolExecutor(max_workers=3) as executor:
+                # Prepare the futures
+                future_to_voice = {
+                    executor.submit(
+                        process_single_voice,
+                        voice=voice,
+                        digest_id=digest_id,
+                        digest=digest,
+                        content=content,
+                        temp_path=temp_path,
+                        model=model,
+                        video=video,
+                        db=db
+                    ): voice for voice in voices
+                }
 
-                    # Create video record
-                    video_data = {
-                        "digest_id": digest_id,
-                        "title": f"Digest {digest.get('date', 'Unknown')} - {voice.replace('_', ' ').title()}",
-                        "description": digest.get('summary', ''),
-                        "voice": voice,  # Explicitly set the voice field
-                        "background_video": video,
-                        "status": "processing",
-                        "word_count": len(re.findall(r'\w+', content)),
-                        "s3_url": "",  # Empty placeholder to satisfy NOT NULL constraint
-                        "metadata": {
-                            "model": model,
-                            "start_time": datetime.now().isoformat(),
-                            "voice": voice,  # Also include in metadata for consistency
-                            "content_preview": content[:500] + ("..." if len(content) > 500 else "")
-                        }
-                    }
-
-                    # Log the video data for debugging
-                    logger.info(f"Creating video record with voice: {voice}")
-
-                    result = db.insert_video(video_data)
-                    video_id = result[0]["id"]
-
-                    # Start async video generation (in a real app, you might queue this)
-                    # For now, we'll process synchronously
-                    result = main(temp_path, llm=False, voice=voice,
-                                  model=model, video_path=AVAILABLE_VIDEOS[video],
-                                  s3_bucket=S3_BUCKET, timestamp=timestamp,
-                                  api_key=os.getenv('OPENAI_API_KEY'))
-
-                    video_path, s3_url = result if isinstance(
-                        result, tuple) else (result, None)
-
-                    if os.path.exists(video_path):
-                        # Update video record
-                        db.update_video_status(video_id, "completed", {
-                            "end_time": datetime.now().isoformat()
-                        })
-
-                        # Update s3_url separately if available
-                        if s3_url:
-                            response = db.supabase.table("videos") \
-                                .update({"s3_url": s3_url}) \
-                                .eq("id", video_id) \
-                                .execute()
-                        elif os.path.exists(video_path):
-                            # Use local path as fallback
-                            response = db.supabase.table("videos") \
-                                .update({"s3_url": video_path}) \
-                                .eq("id", video_id) \
-                                .execute()
-
+                # Process completed futures
+                for future in concurrent.futures.as_completed(future_to_voice):
+                    voice = future_to_voice[future]
+                    try:
+                        result = future.result()
+                        digest_results.append(result)
+                    except Exception as e:
+                        logger.error(
+                            f"Error processing voice {voice}: {str(e)}")
                         digest_results.append({
                             'voice': voice,
-                            'video_id': video_id,
-                            'status': 'completed',
-                            's3_url': s3_url if s3_url else video_path
-                        })
-                    else:
-                        db.update_video_status(video_id, "failed", {
-                            "error": "Video generation failed",
-                            "end_time": datetime.now().isoformat()
+                            'status': 'failed',
+                            'error': str(e)
                         })
 
-                        digest_results.append({
-                            'voice': voice,
-                            'video_id': video_id,
-                            'status': 'failed'
-                        })
-                except Exception as e:
-                    digest_results.append({
-                        'voice': voice,
-                        'status': 'error',
-                        'message': str(e)
-                    })
+            # Clean up temporary file
+            try:
+                os.remove(temp_path)
+            except Exception as e:
+                logger.error(f"Error removing temporary file: {str(e)}")
 
-            # Clean up
-            os.unlink(temp_path)
-
-            results.append({
+            all_results.append({
                 'digest_id': digest_id,
                 'results': digest_results
             })
 
         return jsonify({
             'status': 'success',
-            'processed': len(results),
-            'results': results
+            'results': all_results
         })
 
     except Exception as e:
-        print(f"Error processing digests: {str(e)}")
-        traceback.print_exc()
+        logger.error(f"Error in process_digests: {str(e)}")
         return jsonify({
             'status': 'error',
-            'message': f'Processing digests failed: {str(e)}'
+            'error': str(e)
         }), 500
+
+
+def process_single_voice(voice, digest_id, digest, content, temp_path, model, video, db):
+    """Process a single voice for a digest"""
+    try:
+        timestamp = int(time.time())
+
+        # Create video record
+        video_data = {
+            "digest_id": digest_id,
+            "title": f"Digest {digest.get('date', 'Unknown')} - {voice.replace('_', ' ').title()}",
+            "description": digest.get('summary', ''),
+            "voice": voice,
+            "background_video": video,
+            "status": "processing",
+            "word_count": len(re.findall(r'\w+', content)),
+            "s3_url": "",
+            "metadata": {
+                "model": model,
+                "start_time": datetime.now().isoformat(),
+                "voice": voice,
+                "content_preview": content[:500] + ("..." if len(content) > 500 else "")
+            }
+        }
+
+        logger.info(f"Creating video record with voice: {voice}")
+        result = db.insert_video(video_data)
+        video_id = result[0]["id"]
+
+        # Generate video
+        result = main(temp_path, llm=False, voice=voice,
+                      model=model, video_path=AVAILABLE_VIDEOS[video],
+                      s3_bucket=S3_BUCKET, timestamp=timestamp,
+                      api_key=os.getenv('OPENAI_API_KEY'))
+
+        video_path, s3_url = result if isinstance(
+            result, tuple) else (result, None)
+
+        if os.path.exists(video_path):
+            # Update video record
+            db.update_video_status(video_id, "completed", {
+                "end_time": datetime.now().isoformat()
+            })
+
+            # Update s3_url if available
+            if s3_url:
+                db.supabase.table("videos").update(
+                    {"s3_url": s3_url}).eq("id", video_id).execute()
+            elif os.path.exists(video_path):
+                db.supabase.table("videos").update(
+                    {"s3_url": video_path}).eq("id", video_id).execute()
+
+            return {
+                'voice': voice,
+                'video_id': video_id,
+                'status': 'completed',
+                's3_url': s3_url if s3_url else video_path
+            }
+        else:
+            db.update_video_status(video_id, "failed", {
+                "error": "Video generation failed",
+                "end_time": datetime.now().isoformat()
+            })
+            return {
+                'voice': voice,
+                'video_id': video_id,
+                'status': 'failed'
+            }
+
+    except Exception as e:
+        logger.error(f"Error processing voice {voice}: {str(e)}")
+        if 'video_id' in locals():
+            try:
+                db.update_video_status(video_id, "failed", {
+                    "error": str(e),
+                    "end_time": datetime.now().isoformat()
+                })
+            except Exception as db_error:
+                logger.error(f"Error updating video status: {str(db_error)}")
+
+        return {
+            'voice': voice,
+            'status': 'failed',
+            'error': str(e)
+        }
 
 
 @app.route('/final/<path:filename>')
@@ -825,6 +860,15 @@ def get_status():
             status["supabase_error"] = str(e)
 
     return jsonify(status)
+
+
+@app.route('/health')
+def health_check():
+    return jsonify({
+        'status': 'healthy',
+        'timestamp': datetime.utcnow().isoformat(),
+        'supabase_enabled': SUPABASE_ENABLED
+    }), 200
 
 
 if __name__ == "__main__":

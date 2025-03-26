@@ -94,7 +94,7 @@ The text should be displayed at the bottom of the video with good visibility."""
                     audio_path = path
                     break
 
-    video_path = "assets/minecraft.mp4"  # Use a default video file
+    video_path = "assets/videos/minecraft.mp4"  # Use a default video file
     if not os.path.exists(video_path):
         print(f"❌ Default video file not found: {video_path}")
         print("Please specify a valid video file path")
