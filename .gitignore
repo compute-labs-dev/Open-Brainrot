@@ -1,32 +1,58 @@
-# Files
-assets/edit.mp4
-final
-
-# Virtual environment
-.venv
-venv
-
-# Environment variables
-.env
-
-# macOS
-.DS_Store
-
 # Python
-__pycache__
-
-# Ignore all files in texts directory
-texts/*
-# Don't ignore files ending with _example.txt
-!texts/*_example.txt
-# Don't ignore files ending with _example.ass
-!texts/*_example.ass
-
-temp/
-temp/*
-final/*.mp4
-assets/*.mp4
-.venv/
 __pycache__/
-*.pyc
-outputs/*
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+
+# Virtual Environment
+.env
+.venv
+env/
+venv/
+ENV/
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# Project specific
+temp/
+outputs/
+audio/
+final/
+assets/videos/*
+!assets/videos/.gitkeep
+texts/*
+!texts/.gitkeep
+*.mp4
+*.mp3
+*.wav
+*.ass
+*.srt
+
+# OS specific
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
