@@ -14,6 +14,10 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
 RUN apt-get update && apt-get install -y --no-install-recommends \
     ffmpeg \
     libsndfile1 \
+    git \
+    build-essential \
+    cmake \
+    libatlas-base-dev \
     && apt-get clean \
     && rm -rf /var/lib/apt/lists/*
 
@@ -22,11 +26,16 @@ WORKDIR /app
 RUN mkdir -p texts audio final outputs temp assets/videos && \
     touch outputs/.gitkeep temp/.gitkeep
 
+# Just clone gentle and copy what we need
+RUN git clone https://github.com/lowerquality/gentle.git /gentle && \
+    mkdir -p /app/gentle && \
+    cp -r /gentle/gentle/* /app/gentle/
+
 # Copy requirements first to leverage Docker cache
 COPY requirements.txt .
 
 # Install Python dependencies and ensure NLTK data is downloaded correctly
-RUN pip install --no-cache-dir --timeout 1000 torch==2.1.2 torchaudio==2.1.2 --index-url https://download.pytorch.org/whl/cpu && \
+RUN pip install --no-cache-dir torch==2.1.2 torchaudio==2.1.2 --index-url https://download.pytorch.org/whl/cpu && \
     pip install --no-cache-dir -r requirements.txt && \
     python -c "import nltk; nltk.download('vader_lexicon', download_dir='/usr/local/share/nltk_data')" && \
     ls -la /usr/local/share/nltk_data || exit 1
@@ -53,6 +62,7 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
 RUN apt-get update && apt-get install -y --no-install-recommends \
     ffmpeg \
     libsndfile1 \
+    libatlas-base-dev \
     && apt-get clean \
     && rm -rf /var/lib/apt/lists/*
 
