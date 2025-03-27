@@ -501,6 +501,48 @@ def process_voice_wrapper(args):
 
 @app.route('/generate', methods=['POST'])
 def generate():
+    logger.info(f"\nRequest: {request}\n")
+
+    # Print what the origin of the request is
+    logger.info(f"\n\nOrigin of the request: {request.remote_addr}\n\n")
+
+    # Mock success response
+    return jsonify({
+        "responseData": {
+            "request_id": "req-1743013923",
+            "results": {
+                "donald_trump": {
+                    "local_path": "/outputs/1743013928_donald_trump/Mar_26_2025_Daily_Brainrot_by_Donald_Trump_final.mp4",
+                    "s3_url": "https://ai-digest-bot.s3.amazonaws.com/videos/Mar_26_2025_Daily_Brainrot_by_Donald_Trump_final.mp4",
+                    "video_url": "https://ai-digest-bot.s3.amazonaws.com/videos/Mar_26_2025_Daily_Brainrot_by_Donald_Trump_final.mp4",
+                    "voice": "donald_trump"
+                },
+                "fireship": {
+                    "local_path": "/outputs/1743013928_fireship/Mar_26_2025_Daily_Brainrot_by_Fireship_final.mp4",
+                    "s3_url": "https://ai-digest-bot.s3.amazonaws.com/videos/Mar_26_2025_Daily_Brainrot_by_Fireship_final.mp4",
+                    "video_url": "https://ai-digest-bot.s3.amazonaws.com/videos/Mar_26_2025_Daily_Brainrot_by_Fireship_final.mp4",
+                    "voice": "fireship"
+                },
+                "keanu_reeves": {
+                    "error": "Command '['ffmpeg', '-i', 'outputs/1743013928_keanu_reeves/Mar_26_2025_Daily_Brainrot_by_Keanu_Reeves_audio_keanu_reeves_temp.mp3', '-y', 'outputs/1743013928_keanu_reeves/Mar_26_2025_Daily_Brainrot_by_Keanu_Reeves_audio.wav']' returned non-zero exit status 183.",
+                    "s3_url": "",
+                    "voice": "keanu_reeves"
+                },
+                "southpark_eric_cartman": {
+                    "error": "[southpark_eric_cartman] API request timed out after 3 attempts",
+                    "s3_url": "",
+                    "voice": "southpark_eric_cartman"
+                },
+                "walter_cronkite": {
+                    "error": "Command '['ffmpeg', '-i', 'outputs/1743013928_walter_cronkite/Mar_26_2025_Daily_Brainrot_by_Walter_Cronkite_audio_walter_cronkite_temp.mp3', '-y', 'outputs/1743013928_walter_cronkite/Mar_26_2025_Daily_Brainrot_by_Walter_Cronkite_audio.wav']' returned non-zero exit status 183.",
+                    "s3_url": "",
+                    "voice": "walter_cronkite"
+                }
+            },
+            "success": 0
+        }
+    })
+
     data = request.get_json()
     text = data.get('text', '')
     voices = data.get('voices', [])
@@ -595,6 +637,7 @@ def generate():
                 voice = future_to_voice[future]
                 try:
                     voice_result = future.result()
+                    # Example: {"success": 1, "voice": "voice1", "video_url": "https://example.com/video1.mp4", "s3_url": "https://example.com/video1.mp4"}
                     results[voice] = voice_result
                     logger.info(
                         f"Successfully collected result for voice: {voice}")
@@ -635,100 +678,100 @@ def generate():
         return jsonify({"success": 0, "error": str(e)}), 500
 
 
-@app.route('/process-digests', methods=['POST'])
-def process_digests():
-    """Process digests without videos and generate videos for them"""
-    try:
-        data = request.get_json()
-        if not data:
-            return jsonify({'error': 'No data provided'}), 400
+# @app.route('/process-digests', methods=['POST'])
+# def process_digests():
+#     """Process digests without videos and generate videos for them"""
+#     try:
+#         data = request.get_json()
+#         if not data:
+#             return jsonify({'error': 'No data provided'}), 400
 
-        # Extract parameters
-        digest_ids = data.get('digest_ids', [])
-        voices = data.get('voices', [])
-        video = data.get('video', 'minecraft')  # Default to minecraft
-        model = data.get('model', 'claude')  # Default to claude
+#         # Extract parameters
+#         digest_ids = data.get('digest_ids', [])
+#         voices = data.get('voices', [])
+#         video = data.get('video', 'minecraft')  # Default to minecraft
+#         model = data.get('model', 'claude')  # Default to claude
 
-        if not digest_ids:
-            return jsonify({'error': 'No digest IDs provided'}), 400
-        if not voices:
-            return jsonify({'error': 'No voices specified'}), 400
+#         if not digest_ids:
+#             return jsonify({'error': 'No digest IDs provided'}), 400
+#         if not voices:
+#             return jsonify({'error': 'No voices specified'}), 400
 
-        # Initialize database connection
-        db = SupabaseClient()
+#         # Initialize database connection
+#         db = SupabaseClient()
 
-        # Store results for each digest
-        all_results = []
+#         # Store results for each digest
+#         all_results = []
 
-        # Process each digest
-        for digest_id in digest_ids:
-            # Get digest content
-            digest = db.get_digest_by_id(digest_id)
-            if not digest:
-                continue
+#         # Process each digest
+#         for digest_id in digest_ids:
+#             # Get digest content
+#             digest = db.get_digest_by_id(digest_id)
+#             if not digest:
+#                 continue
 
-            content = digest.get('content', '')
-            if not content:
-                continue
+#             content = digest.get('content', '')
+#             if not content:
+#                 continue
 
-            # Create temporary file for the content
-            temp_path = create_temp_file(content)
-            digest_results = []
+#             # Create temporary file for the content
+#             temp_path = create_temp_file(content)
+#             digest_results = []
 
-            # Process videos concurrently using ThreadPoolExecutor
-            with ThreadPoolExecutor(max_workers=3) as executor:
-                # Prepare the futures
-                future_to_voice = {
-                    executor.submit(
-                        process_single_voice,
-                        voice=voice,
-                        digest_id=digest_id,
-                        digest=digest,
-                        content=content,
-                        temp_path=temp_path,
-                        model=model,
-                        video=video,
-                        db=db
-                    ): voice for voice in voices
-                }
+#             # Process videos concurrently using ThreadPoolExecutor
+#             with ThreadPoolExecutor(max_workers=3) as executor:
+#                 # Prepare the futures
+#                 future_to_voice = {
+#                     executor.submit(
+#                         process_single_voice,
+#                         voice=voice,
+#                         digest_id=digest_id,
+#                         digest=digest,
+#                         content=content,
+#                         temp_path=temp_path,
+#                         model=model,
+#                         video=video,
+#                         db=db
+#                     ): voice for voice in voices
+#                 }
 
-                # Process completed futures
-                for future in concurrent.futures.as_completed(future_to_voice):
-                    voice = future_to_voice[future]
-                    try:
-                        result = future.result()
-                        digest_results.append(result)
-                    except Exception as e:
-                        logger.error(
-                            f"Error processing voice {voice}: {str(e)}")
-                        digest_results.append({
-                            'voice': voice,
-                            'status': 'failed',
-                            'error': str(e)
-                        })
+#                 # Process completed futures
+#                 for future in concurrent.futures.as_completed(future_to_voice):
+#                     voice = future_to_voice[future]
+#                     try:
+#                         result = future.result()
+#                         digest_results.append(result)
+#                     except Exception as e:
+#                         logger.error(
+#                             f"Error processing voice {voice}: {str(e)}")
+#                         digest_results.append({
+#                             'voice': voice,
+#                             'status': 'failed',
+#                             'error': str(e)
+#                         })
 
-            # Clean up temporary file
-            try:
-                os.remove(temp_path)
-            except Exception as e:
-                logger.error(f"Error removing temporary file: {str(e)}")
+#             # Clean up temporary file
+#             try:
+#                 os.remove(temp_path)
+#             except Exception as e:
+#                 logger.error(f"Error removing temporary file: {str(e)}")
 
-            all_results.append({
-                'digest_id': digest_id,
-                'results': digest_results
-            })
+#             all_results.append({
+#                 'digest_id': digest_id,
+#                 'results': digest_results
+#             })
 
-        return jsonify({
-            'status': 'success',
-            'results': all_results
-        })
+#         return jsonify({
+#             'status': 'success',
+#             'results': all_results
+#         })
 
-    except Exception as e:
-        logger.error(f"Error in process_digests: {str(e)}")
-        return jsonify({
-            'status': 'error',
-            'error': str(e)
-        }), 500
+#     except Exception as e:
+#         logger.error(f"Error in process_digests: {str(e)}")
+#         return jsonify({
+#             'status': 'error',
+#             'error': str(e)
+#         }), 500
 
 
 def process_single_voice(voice, digest_id, digest, content, temp_path, model, video, db):
