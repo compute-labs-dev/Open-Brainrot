@@ -58,7 +58,7 @@ async def get_httpx_client(timeout=60.0):
         await client.aclose()
 
 
-async def generate_voice(text, voice_id, output_path="audio/output.mp3", max_retries=3, timeout=60.0):
+async def generate_voice(text, voice_id, output_path="audio/output.mp3", max_retries=5, timeout=90.0):
     """Generate audio using Fish Audio API with special effects support"""
     load_dotenv()
     api_key = os.getenv("FISH_API_KEY")

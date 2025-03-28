@@ -353,7 +353,7 @@ def clean_text_for_tts(text):
     return text.strip()
 
 
-def transform_to_brainrot(input_text, api_key=None, voice="donald_trump", model="o3mini", timestamp=None):
+def transform_to_brainrot(input_text, api_key=None, voice="donald_trump", model="o3mini", timestamp=None, use_special_effects=True):
     """Transform input text to brain rot content
 
     Args:
@@ -361,6 +361,8 @@ def transform_to_brainrot(input_text, api_key=None, voice="donald_trump", model=
         api_key(str, optional): OpenAI API key. Defaults to None.
         voice(str, optional): Voice style to use. Defaults to "donald_trump".
         model(str, optional): Model to use for generating brain rot.
+        timestamp(int, optional): Timestamp for consistent directory naming. 
+        use_special_effects(bool, optional): Whether to include special effects (breaks, laughs, etc.). Defaults to True.
 
     Returns:
         tuple: (brainrot_text, output_paths)
@@ -405,6 +407,45 @@ def transform_to_brainrot(input_text, api_key=None, voice="donald_trump", model=
 
     # Get the appropriate prompt for this voice
     voice_prompt = VOICE_PROMPTS.get(voice, DEFAULT_PROMPT)
+
+    # Apply modifications to remove special effects if disabled
+    if not use_special_effects:
+        logger.info(f"Special effects disabled for voice: {voice}")
+        # Create a version of the prompt without special effects instructions
+        if voice_prompt == DEFAULT_PROMPT:
+            # Modify the default prompt to remove special effects
+            modified_prompt = DEFAULT_PROMPT.replace(
+                """3. Special Effects Usage:
+   - Required Break Pattern:
+     • (break) after EVERY sentence that ends with a period
+     • (long-break) between ALL major sections and subsections
+
+   - Break Timing:
+     • After complete sentences
+     • Between related items in a list
+     • When introducing new developments
+     • After important phrases
+     • Between cause and effect statements
+
+   - Long Break:
+     • Between major sections
+     • After major announcements
+     • Before changing topics
+     • At the end of each content block
+     • Before significant shifts in subject matter""",
+
+                """3. DO NOT use any special effects markers such as (break), (long-break), (sigh), (laugh), etc.
+   Instead, focus on natural language flow and appropriate punctuation.""")
+
+            # Also remove laugh instruction
+            modified_prompt = modified_prompt.replace(
+                "   - (laugh) when something is funny", "")
+            voice_prompt = modified_prompt
+        else:
+            # For custom prompts, add a note to not use special effects
+            voice_prompt = voice_prompt + \
+                "\n\nIMPORTANT OVERRIDE: DO NOT include any special effects markers such as (break), (long-break), (sigh), (laugh), etc. in your response. Create natural speech without these markers."
+
     system_prompt = voice_prompt + '\n\n' + GENERAL_PROMPT
 
     # Check if API key is provided
@@ -420,7 +461,8 @@ def transform_to_brainrot(input_text, api_key=None, voice="donald_trump", model=
         api_key,
         model_name=model_name,
         display_name=voice,
-        personality=personality
+        personality=personality,
+        use_special_effects=use_special_effects
     )
 
     # If API call failed, raise an exception - DO NOT proceed with original content
@@ -445,7 +487,7 @@ def transform_to_brainrot(input_text, api_key=None, voice="donald_trump", model=
     return brainrot_text, output_paths
 
 
-def call_openai_api(content, system_prompt, api_key, model_name, display_name, personality):
+def call_openai_api(content, system_prompt, api_key, model_name, display_name, personality, use_special_effects=True):
     """Call OpenAI API with improved error handling and retries"""
     voice_context = f"[{display_name}]"
 
@@ -455,6 +497,8 @@ def call_openai_api(content, system_prompt, api_key, model_name, display_name, p
         raise ValueError(error_msg)
 
     logger.info(f"{voice_context} Preparing API call with model: {model_name}")
+    logger.info(
+        f"{voice_context} Special effects: {'enabled' if use_special_effects else 'disabled'}")
 
     headers = {
         "Authorization": f"Bearer {api_key}",
@@ -469,10 +513,12 @@ Start your broadcast with a dynamic, engaging introduction that:
 4. Makes it personal and engaging
 5. DO NOT read the full title or make it too formal
 6. Keep it short and punchy - no long introductions
+"""
 
-IMPORTANT: Create a well-paced script aiming for a 1:30 to 2:00 minute video (250-300 words total).
+    if not use_special_effects:
+        character_prompt += "\nIMPORTANT: DO NOT use any special effects markers such as (break), (long-break), (sigh), (laugh), etc. Create natural speech without these markers."
 
-{system_prompt}"""
+    character_prompt += f"\n\nIMPORTANT: Create a well-paced script aiming for a 1:30 to 2:00 minute video (250-300 words total).\n\n{system_prompt}"
 
     payload = {
         "model": model_name,

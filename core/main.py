@@ -5,6 +5,7 @@ from utils.dict import *
 from generators.video_generator import *
 from utils.search import *
 from generators.brainrot_generator import transform_to_brainrot, MODELS, VOICES, VOICE_PROMPTS
+from constants import SUBTITLE_STYLE, VOICE_SPEAKING_RATES, DEFAULT_SPEAKING_RATE, SUBTITLE_TIMING, FFMPEG_PARAMS, ASS_FORMAT, VIDEO_CONFIG
 import time
 from datetime import datetime, timedelta
 import os
@@ -20,6 +21,16 @@ from pydub import AudioSegment
 import asyncio
 from tqdm import tqdm
 from botocore.exceptions import NoCredentialsError
+import sys
+import json
+import random
+import tempfile
+import concurrent.futures
+import requests
+import subprocess
+import numpy as np
+from PIL import Image
+from utils.logger import setup_logger, log_info, log_error
 
 # Configure module-level logger to match the server format
 logger = logging.getLogger(__name__)
@@ -126,7 +137,7 @@ def extract_random_segment(input_video, output_video, target_duration):
 def main(input_source, llm=False, scraped_url='texts/scraped_url.txt', output_pre='texts/processed_output.txt',
          final_output='texts/oof.txt', speech_final='audio/output_converted.wav', subtitle_path='texts/testing.ass',
          output_path='final/final.mp4', speaker_wav="assets/default.mp3", video_path='assets/videos/minecraft.mp4',
-         language="en-us", api_key=None, voice="donald_trump", model="claude", s3_bucket=None, timestamp=None):
+         language="en-us", api_key=None, voice="donald_trump", model="claude", s3_bucket=None, timestamp=None, use_special_effects=True):
     """
     Main function to generate a video from text
 
@@ -147,6 +158,7 @@ def main(input_source, llm=False, scraped_url='texts/scraped_url.txt', output_pr
     - model: Model to use
     - s3_bucket: S3 bucket to upload to
     - timestamp: Timestamp for consistent directory naming
+    - use_special_effects: Whether to include special effects (breaks, laughs, etc.)
     """
     # Start timing the entire process
     total_start_time = time.time()
@@ -167,6 +179,8 @@ def main(input_source, llm=False, scraped_url='texts/scraped_url.txt', output_pr
         logger.error(f"{voice_context} {message}")
 
     log_info("Starting video generation pipeline")
+    log_info(
+        f"Special effects: {'enabled' if use_special_effects else 'disabled'}")
 
     # Create timestamped output directory with voice name
     if timestamp is None:
@@ -219,7 +233,7 @@ def main(input_source, llm=False, scraped_url='texts/scraped_url.txt', output_pr
         log_info("\n=== STEP 2: TRANSFORMING TO BRAINROT STYLE ===")
         start_time = time.time()
         brainrot_text, output_paths = transform_to_brainrot(
-            input_file, api_key, voice, model, timestamp=timestamp)
+            input_file, api_key, voice, model, timestamp=timestamp, use_special_effects=use_special_effects)
         step_times['brainrot_transform'] = time.time() - start_time
         log_info(
             f"Brainrot transformation completed in {format_time(step_times['brainrot_transform'])}")
@@ -256,6 +270,16 @@ def main(input_source, llm=False, scraped_url='texts/scraped_url.txt', output_pr
         log_info(
             f"Video segment extraction completed in {format_time(step_times['video_extraction'])}")
 
+        # Crop video to vertical format (9:16 aspect ratio)
+        log_info("\n=== STEP 4.5: CROPPING VIDEO TO VERTICAL FORMAT ===")
+        start_time = time.time()
+        vertical_video = os.path.join(output_dir, "temp_vertical_video.mp4")
+        crop_to_vertical(temp_video, vertical_video)
+        temp_video = vertical_video  # Update temp_video to use the cropped version
+        step_times['video_cropping'] = time.time() - start_time
+        log_info(
+            f"Video cropping completed in {format_time(step_times['video_cropping'])}")
+
         # Generate subtitles
         log_info("\n=== STEP 5: GENERATING SUBTITLES ===")
         start_time = time.time()
@@ -268,64 +292,191 @@ def main(input_source, llm=False, scraped_url='texts/scraped_url.txt', output_pr
         sentences = re.split(r'[.!?]+', text)
         sentences = [s.strip() for s in sentences if s.strip()]
 
-        # Further split long sentences into smaller chunks
+        # Further split sentences into smaller chunks with max words per chunk from constants
+        # Track which chunks start a new sentence for better timing
         chunks = []
+        is_sentence_start = []  # Track if chunk starts a sentence
+        is_sentence_end = []    # Track if chunk ends a sentence
+        is_question = []        # Track if chunk contains a question mark
+
+        max_words = SUBTITLE_TIMING["max_words_per_chunk"]
+
         for sentence in sentences:
             words = sentence.split()
-            if len(words) > 10:  # If sentence is too long
-                # Split into chunks of 5-10 words
-                for i in range(0, len(words), 8):
-                    chunk = ' '.join(words[i:i+8])
+
+            # Check if sentence contains a question
+            contains_question = '?' in sentence
+
+            if len(words) > max_words:  # If sentence is too long
+                # Split into chunks of max words per chunk
+                for i in range(0, len(words), max_words):
+                    chunk = ' '.join(words[i:i+max_words])
                     if chunk:
                         chunks.append(chunk)
+                        # First chunk of each sentence is marked as start
+                        is_sentence_start.append(i == 0)
+                        # Last chunk of each sentence is marked as end
+                        is_sentence_end.append(i + max_words >= len(words))
+                        # Mark if part of a question
+                        is_question.append(contains_question)
             else:
                 chunks.append(sentence)
+                # Single chunk is both sentence start and end
+                is_sentence_start.append(True)
+                is_sentence_end.append(True)
+                # Mark if it's a question
+                is_question.append(contains_question)
+
+        # Adjust speaking rate based on voice
+        speaking_rate = VOICE_SPEAKING_RATES.get(voice, DEFAULT_SPEAKING_RATE)
+        log_info(
+            f"Using voice-specific speaking rate: {speaking_rate} words/second for {voice}")
 
         # Calculate timing for each chunk
         total_chunks = len(chunks)
-        initial_silence = 0.3  # 300ms initial silence
-        subtitle_gap = 0.2  # 200ms gap between subtitles
-        available_duration = audio_duration - \
-            initial_silence - (subtitle_gap * (total_chunks - 1))
-        time_per_chunk = available_duration / total_chunks
+        subtitle_timings = []
 
-        # Write subtitles in ASS format
+        # More sophisticated timing estimation based on word and character count
+        current_time = SUBTITLE_TIMING["initial_silence"]
+
+        for i, chunk in enumerate(chunks):
+            word_count = len(chunk.split())
+            char_count = len(chunk)
+
+            # Count long words (greater than 6 characters)
+            long_words = sum(1 for word in chunk.split() if len(word) > 6)
+
+            # Base time calculation using speaking rate
+            word_duration = word_count / speaking_rate
+
+            # Adjust for very short or very long words
+            avg_word_length = char_count / max(1, word_count)
+            # Normalize around avg 5 chars per word
+            char_factor = min(1.6, max(0.8, avg_word_length / 5.0))
+
+            # Apply character-length adjustment (longer words take longer to say)
+            estimated_duration = word_duration * char_factor
+
+            # Add extra time for long words
+            long_word_padding = long_words * \
+                SUBTITLE_TIMING["long_word_factor"]
+            estimated_duration += long_word_padding
+
+            # Add extra time for questions
+            if is_question[i]:
+                estimated_duration *= SUBTITLE_TIMING["question_time_factor"]
+
+            # Add extra time for sentence endings
+            if is_sentence_end[i]:
+                estimated_duration *= SUBTITLE_TIMING["end_sentence_factor"]
+
+            # Ensure a minimum duration based on word count
+            min_word_duration = word_count * \
+                SUBTITLE_TIMING["min_duration_per_word"]
+            minimum_duration = max(
+                SUBTITLE_TIMING["minimum_subtitle_duration"],
+                min_word_duration
+            )
+            estimated_duration = max(minimum_duration, estimated_duration)
+
+            # Add inter-sentence pause if this is the start of a sentence (except first chunk)
+            sentence_start_pause = SUBTITLE_TIMING["sentence_start_pause"] if (
+                i > 0 and is_sentence_start[i]) else 0.0
+
+            # Add padding for pauses between chunks
+            standard_padding = SUBTITLE_TIMING["standard_padding"]
+
+            # Calculate end time for this chunk
+            end_time = current_time + estimated_duration
+
+            # Store timing info
+            subtitle_timings.append({
+                'text': chunk,
+                'start': current_time,
+                'end': end_time,
+                'is_sentence_start': is_sentence_start[i],
+                'is_sentence_end': is_sentence_end[i],
+                'is_question': is_question[i]
+            })
+
+            # Move to next subtitle with padding
+            current_time = end_time + standard_padding + sentence_start_pause
+
+        # Adjust timings to match total audio duration
+        total_calculated_duration = subtitle_timings[-1]['end'] - \
+            SUBTITLE_TIMING["initial_silence"]
+        adjustment_factor = (
+            audio_duration - SUBTITLE_TIMING["initial_silence"]) / total_calculated_duration
+
+        log_info(
+            f"Estimated duration: {format_time(total_calculated_duration)}")
+        log_info(f"Actual audio duration: {format_time(audio_duration)}")
+        log_info(f"Timing adjustment factor: {adjustment_factor:.2f}")
+
+        # Apply adjustment uniformly to maintain relative timing
+        adjusted_timings = []
+        for timing in subtitle_timings:
+            adjusted_timings.append({
+                'text': timing['text'],
+                'start': SUBTITLE_TIMING["initial_silence"] + (timing['start'] - SUBTITLE_TIMING["initial_silence"]) * adjustment_factor,
+                'end': SUBTITLE_TIMING["initial_silence"] + (timing['end'] - SUBTITLE_TIMING["initial_silence"]) * adjustment_factor,
+                'is_sentence_start': timing.get('is_sentence_start', False),
+                'is_sentence_end': timing.get('is_sentence_end', False),
+                'is_question': timing.get('is_question', False)
+            })
+
+        # Create the ASS subtitle file
         with open(output_paths['subtitle'], 'w', encoding='utf-8') as f:
-            # Write header
-            f.write('[Script Info]\n')
-            f.write('Title: Generated Subtitles\n')
-            f.write('ScriptType: v4.00+\n')
-            f.write('WrapStyle: 0\n')
-            f.write('ScaledBorderAndShadow: yes\n')
-            f.write('YCbCr Matrix: None\n')
-            f.write('PlayResX: 404\n')
-            f.write('PlayResY: 720\n\n')
+            # Header
+            f.write("[Script Info]\n")
+            f.write(f"Title: {base_filename}\n")
+            f.write("ScriptType: v4.00+\n")
+            f.write(f"PlayResX: {VIDEO_CONFIG['width']}\n")
+            f.write(f"PlayResY: {VIDEO_CONFIG['height']}\n")
+            f.write("ScaledBorderAndShadow: yes\n\n")
 
-            # Write styles
-            f.write('[V4+ Styles]\n')
-            f.write('Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding\n')
+            # Style
+            f.write("[V4+ Styles]\n")
+            f.write("Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding\n")
+            f.write(f"Style: Default,{SUBTITLE_STYLE['font_name']},{SUBTITLE_STYLE['font_size']},{SUBTITLE_STYLE['primary_color']},{SUBTITLE_STYLE['secondary_color']},{SUBTITLE_STYLE['outline_color']},{SUBTITLE_STYLE['back_color']},{ASS_FORMAT['bold']},{ASS_FORMAT['italic']},{ASS_FORMAT['underline']},{ASS_FORMAT['strikeout']},{ASS_FORMAT['scale_x']},{ASS_FORMAT['scale_y']},{ASS_FORMAT['spacing']},{ASS_FORMAT['angle']},{SUBTITLE_STYLE['border_style']},{SUBTITLE_STYLE['outline']},{SUBTITLE_STYLE['shadow']},{SUBTITLE_STYLE['alignment']},{SUBTITLE_STYLE['margin_l']},{SUBTITLE_STYLE['margin_r']},{SUBTITLE_STYLE['margin_v']},{ASS_FORMAT['encoding']}\n\n")
+
+            # Events
+            f.write("[Events]\n")
             f.write(
-                'Style: Default,Arial,48,&HFFFFFF,&H000000,&H000000,&H000000,1,0,0,0,100,100,0,0,1,2,2,2,20,20,20,1\n\n')
+                "Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text\n")
 
-            # Write events
-            f.write('[Events]\n')
-            f.write(
-                'Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text\n')
+            # Add adjusted subtitle timings
+            for i, timing in enumerate(adjusted_timings):
+                subtitle_start_time = format_time_ass(timing['start'])
+                end_time = format_time_ass(timing['end'])
 
-            # Write dialogue lines with proper timing
-            current_time = initial_silence  # Start after initial silence
-            for chunk in chunks:
-                start_time = current_time
-                end_time = start_time + time_per_chunk
-                current_time = end_time + subtitle_gap  # Add gap for next subtitle
+                # Apply text styling based on sentence starts for better readability
+                text = timing['text']
 
-                # Format times as H:MM:SS.cc for ASS format
-                start_str = f"{int(start_time//3600)}:{int((start_time % 3600)//60):02d}:{int(start_time % 60):02d}.{int((start_time % 1)*100):02d}"
-                end_str = f"{int(end_time//3600)}:{int((end_time % 3600)//60):02d}:{int(end_time % 60):02d}.{int((end_time % 1)*100):02d}"
+                # Ensure consistent capitalization for sentence starts
+                if timing['is_sentence_start'] and text and len(text) > 0:
+                    text = text[0].upper() + \
+                        text[1:] if len(text) > 1 else text.upper()
 
-                # Write dialogue line in ASS format
+                # Add the subtitle entry with appropriate styling
+                # "{\\blur0.6}" for mild blur to smooth font edges, improves readability
+                blur_effect = "{\\blur0.6}"
+
+                # Alpha for background - ASS format uses hex AABBGGRR
+                bg_alpha_hex = format(
+                    int(255 * SUBTITLE_STYLE['bg_opacity']), '02x')
+                bg_color = f"{{\\1a&H{bg_alpha_hex}&}}"
+
+                # Add italics for questions
+                style_effect = ""
+                if timing['is_question']:
+                    style_effect = "{\\i1}"  # Italic for questions
+                elif timing['is_sentence_end']:
+                    # Add a small pause indicator (slightly longer display)
+                    pass  # Already handled in timing calculation
+
                 f.write(
-                    f'Dialogue: 0,{start_str},{end_str},Default,,0,0,0,,{chunk}\n')
+                    f"Dialogue: 0,{subtitle_start_time},{end_time},Default,,0,0,0,,{blur_effect}{bg_color}{style_effect}{text}\n")
 
         step_times['subtitle_generation'] = time.time() - start_time
         log_info(
@@ -337,9 +488,15 @@ def main(input_source, llm=False, scraped_url='texts/scraped_url.txt', output_pr
         log_info("\n=== STEP 6: VIDEO GENERATION ===")
         start_time = time.time()
 
-        # Generate final video with subtitles and audio
-        add_subtitles_and_overlay_audio(temp_video, output_paths['audio_converted'],
-                                        output_paths['subtitle'], output_paths['video'])
+        # Combine audio with subtitles and video
+        log_info(f"Adding subtitles and audio to video...")
+        success = add_subtitles_and_overlay_audio(
+            input_video_path=temp_video,
+            subtitle_file_path=output_paths['subtitle'],
+            audio_file_path=output_paths['audio_converted'],
+            output_path=output_paths['video'],
+            temp_dir=output_dir
+        )
 
         step_times['video_generation'] = time.time() - start_time
         log_info(
@@ -453,7 +610,7 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
     dialogue_lines = []
 
     for phrase in phrases:
-        start_time = convert_seconds_to_ass_time(phrase['start'])
+        subtitle_start = convert_seconds_to_ass_time(phrase['start'])
         end_time = convert_seconds_to_ass_time(phrase['end'])
 
         # Join the words with spaces, and add the dialogue line
@@ -463,7 +620,7 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
         if text and len(text) > 0:
             text = text[0].upper() + text[1:]
 
-        dialogue_line = f"Dialogue: 0,{start_time},{end_time},Default,,0,0,0,,{text}"
+        dialogue_line = f"Dialogue: 0,{subtitle_start},{end_time},Default,,0,0,0,,{text}"
         dialogue_lines.append(dialogue_line)
 
     # Write to the output file
@@ -496,15 +653,13 @@ Dialogue: 0,0:00:01.00,0:00:05.00,Default,,0,0,0,,No subtitle data available
 
 
 def format_time_ass(seconds):
-    """Format time in ASS format (H:MM:SS.cc)"""
-    if isinstance(seconds, str):
-        return seconds
-
-    hours = int(seconds / 3600)
-    minutes = int((seconds % 3600) / 60)
+    """Format seconds to ASS time format (H:MM:SS.cc)"""
+    hours = int(seconds // 3600)
+    minutes = int((seconds % 3600) // 60)
     seconds = seconds % 60
-    centiseconds = int((seconds - int(seconds)) * 100)
-    return f"{hours}:{minutes:02d}:{int(seconds):02d}.{centiseconds:02d}"
+    centiseconds = int((seconds % 1) * 100)
+    seconds = int(seconds)
+    return f"{hours}:{minutes:02d}:{seconds:02d}.{centiseconds:02d}"
 
 
 def add_initial_silence(audio_path, output_path=None, silence_duration=300):

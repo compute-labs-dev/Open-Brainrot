@@ -8,6 +8,8 @@ import random
 from pathlib import Path
 from generators.brainrot_generator import transform_to_brainrot, clean_text_for_tts
 from pydub import AudioSegment
+from utils.logger import log_info, log_error
+from constants import SUBTITLE_STYLE, FFMPEG_PARAMS
 
 # ===== SUBTITLE STYLE CONFIGURATION =====
 SUBTITLE_STYLES = {
@@ -18,7 +20,7 @@ SUBTITLE_STYLES = {
         "secondary_color": "&H000000FF",  # Red outline
         "outline_color": "&H00000000",   # Black outline
         "back_color": "&H00000000",      # Black shadow
-        "bold": -1,                      # -1 for true, 0 for false
+        "bold": 1,                      # 1 for true, 0 for false
         "italic": 0,
         "underline": 0,
         "strike_out": 0,
@@ -29,12 +31,10 @@ SUBTITLE_STYLES = {
         "border_style": 1,
         "outline": 1,                    # Outline thickness
         "shadow": 0,                     # Shadow distance
-        "alignment": 8,
-        # "margin_l": 0,                   # Set left margin to 0 for center alignment
-        # "margin_r": 0,                   # Set right margin to 0 for center alignment
+        "alignment": 2,                  # 2 for bottom center
+        "margin_l": 20,                  # Left margin
+        "margin_r": 20,                  # Right margin
         "margin_v": 60,                  # Vertical margin from top
-        # Makes text center-aligned instead of left-aligned
-
     },
     "Effects": {
         "font_name": "Arial",
@@ -43,7 +43,7 @@ SUBTITLE_STYLES = {
         "secondary_color": "&H000000FF",
         "outline_color": "&H00000000",
         "back_color": "&H00000000",
-        "bold": -1,
+        "bold": 1,
         "italic": 0,
         "underline": 0,
         "strike_out": 0,
@@ -54,10 +54,10 @@ SUBTITLE_STYLES = {
         "border_style": 1,
         "outline": 0,
         "shadow": 0,
-        "alignment": 8,                  # Match Default style alignment
-        "margin_l": 0,                   # Set left margin to 0 for center alignment
-        "margin_r": 0,                   # Set right margin to 0 for center alignment
-        "margin_v": 60,                  # Match Default style vertical margin
+        "alignment": 8,                  # 8 for top center
+        "margin_l": 20,                  # Left margin
+        "margin_r": 20,                  # Right margin
+        "margin_v": 60,                  # Vertical margin
     }
 }
 
@@ -118,17 +118,26 @@ def trim_video(input_path, output_path, duration=120):
 
 
 def crop_to_vertical(input_path, output_path):
-    """Crop video to 9:16 aspect ratio (vertical video) while maintaining original resolution"""
+    """Crop video to 9:16 aspect ratio (vertical video) using dimensions from VIDEO_CONFIG"""
+    # Get width and height from VIDEO_CONFIG
+    target_width = VIDEO_CONFIG["width"]
+    target_height = VIDEO_CONFIG["height"]
+
+    # Create proper 9:16 aspect ratio
     subprocess.run([
         'ffmpeg',
         '-i', input_path,
-        # This maintains the original height and adjusts width for 9:16
-        '-vf', 'crop=ih*9/16:ih',
-        '-c:v', 'libx264', '-preset', 'slow', '-crf', '18', '-profile:v', 'high',
+        # This maintains the height and adjusts width for 9:16 ratio
+        '-vf', f'crop=ih*9/16:ih,scale={target_width}:{target_height}',
+        '-c:v', FFMPEG_PARAMS["video_codec"],
+        '-preset', FFMPEG_PARAMS["preset"],
+        '-crf', str(FFMPEG_PARAMS["crf"]),
         '-c:a', 'copy',
         '-y',
         output_path
     ], check=True)
+
+    log_info(f"Cropped video to 9:16 ratio: {target_width}x{target_height}")
     return output_path
 
 
@@ -265,74 +274,125 @@ def generate_ffmpeg_filters(subtitle_entries, font_size=80, font_path="/System/L
     return filter_string
 
 
-def add_subtitles_and_overlay_audio(video_path, audio_path, subtitle_path, output_path):
-    """Add subtitles to a video and overlay the audio, all in one step using FFmpeg."""
-    print(f"\n=== PROCESSING VIDEO WITH SUBTITLES ===")
+def add_subtitles_and_overlay_audio(
+    input_video_path,
+    subtitle_file_path,
+    audio_file_path,
+    output_path,
+    temp_dir,
+    font_size=None,  # Optional override for font_size from constants
+    font_name=None,  # Optional override for font_name from constants
+    margin_v=None,   # Optional override for margin_v from constants
+    margin_h=None,   # Optional override for margin_h (horizontal margin)
+    outline=None,    # Optional override for outline width from constants
+    shadow=None,     # Optional override for shadow depth from constants
+    bg_opacity=None,  # Optional override for background opacity from constants
+    position=None,   # Optional override for position from constants
+    border_style=None  # Optional override for border_style from constants
+):
+    """
+    Add subtitle and audio to a video.
 
-    # Create temporary directory for processing
-    temp_dir = os.path.dirname(output_path)
-    os.makedirs(temp_dir, exist_ok=True)
+    Args:
+        input_video_path (str): Path to the input video
+        subtitle_file_path (str): Path to the subtitle file in ASS format
+        audio_file_path (str): Path to the audio file
+        output_path (str): Path to write output video
+        temp_dir (str): Path to temporary directory for intermediate files
+        font_size (int, optional): Override font size from constants
+        font_name (str, optional): Override font name from constants
+        margin_v (int, optional): Override vertical margin from constants
+        margin_h (int, optional): Override horizontal margin from constants
+        outline (float, optional): Override outline width from constants
+        shadow (float, optional): Override shadow depth from constants 
+        bg_opacity (float, optional): Override background opacity from constants
+        position (int, optional): Override position from constants
+        border_style (int, optional): Override border style from constants
 
-    # Get the duration of the audio and video files
-    audio_duration = get_duration(audio_path)
-    video_duration = get_duration(video_path)
-
-    print(f"Audio duration: {audio_duration:.2f} seconds")
-    print(f"Video duration: {video_duration:.2f} seconds")
-
-    # Extract a random segment matching audio duration first
-    max_start = video_duration - audio_duration
-    if max_start < 0:
-        print(
-            f"Input video ({video_duration:.2f}s) is shorter than target duration ({audio_duration:.2f}s)")
-        return None
-
-    # Generate random start time
-    start_time = random.uniform(0, max_start)
-
-    # Combine all operations into a single FFmpeg command:
-    # 1. Extract segment
-    # 2. Crop to vertical
-    # 3. Add subtitles
-    # 4. Add audio
-    # All in one command to minimize disk I/O and encoding/decoding steps
-    command = [
-        'ffmpeg', '-y',
-        # Input video with start time
-        '-ss', str(start_time),
-        '-i', video_path,
-        # Input audio
-        '-i', audio_path,
-        # Complex filter for combining operations
-        '-filter_complex',
-        f"[0:v]crop=ih*9/16:ih,scale=-2:1080[cropped];" +  # Crop and scale
-        # Add subtitles
-        f"[cropped]subtitles={subtitle_path}:force_style='Alignment=8,MarginV=60'[subbed]",
-        # Map the processed video and audio streams
-        '-map', '[subbed]',
-        '-map', '1:a',
-        # Output settings
-        '-t', str(audio_duration),
-        '-c:v', 'libx264',
-        '-preset', 'fast',  # Change from 'slow' to 'fast' for better performance
-        # Slightly reduce quality for better performance (18 -> 23)
-        '-crf', '23',
-        '-profile:v', 'high',
-        '-pix_fmt', 'yuv420p',
-        '-c:a', 'aac',
-        '-b:a', '192k',
-        '-movflags', '+faststart',  # Enable fast start for web playback
-        output_path
-    ]
-
+    Returns:
+        bool: True if successful, False otherwise
+    """
     try:
-        # Run the combined FFmpeg command
-        subprocess.run(command, check=True)
-        print(f"✓ Successfully generated final video with subtitles and audio")
-        return output_path
+        # Create a custom style string if any overrides were provided
+        custom_style = None
+        if any([font_size, font_name, margin_v, margin_h, outline, shadow, bg_opacity, position, border_style]):
+            # Start with defaults from constants
+            style_params = {
+                'font_size': font_size or SUBTITLE_STYLE['font_size'],
+                'font_name': font_name or SUBTITLE_STYLE['font_name'],
+                'margin_v': margin_v or SUBTITLE_STYLE['margin_v'],
+                'margin_l': margin_h or SUBTITLE_STYLE['margin_l'],
+                'margin_r': margin_h or SUBTITLE_STYLE['margin_r'],
+                'outline': outline or SUBTITLE_STYLE['outline'],
+                'shadow': shadow or SUBTITLE_STYLE['shadow'],
+                'bg_opacity': bg_opacity if bg_opacity is not None else SUBTITLE_STYLE['bg_opacity'],
+                'position': position or SUBTITLE_STYLE['alignment'],
+                'border_style': border_style or SUBTITLE_STYLE['border_style']
+            }
+
+            # Create the custom ASS style string with overrides
+            custom_style = (f"FontName={style_params['font_name']}:"
+                            f"FontSize={style_params['font_size']}:"
+                            f"PrimaryColour={SUBTITLE_STYLE['primary_color']}:"
+                            f"SecondaryColour={SUBTITLE_STYLE['secondary_color']}:"
+                            f"OutlineColour={SUBTITLE_STYLE['outline_color']}:"
+                            f"BackColour={SUBTITLE_STYLE['back_color']}:"
+                            f"Bold=1:Italic=0:"
+                            f"BorderStyle={style_params['border_style']}:"
+                            f"Outline={style_params['outline']}:"
+                            f"Shadow={style_params['shadow']}:"
+                            f"Alignment={style_params['position']}:"
+                            f"MarginL={style_params['margin_l']}:"
+                            f"MarginR={style_params['margin_r']}:"
+                            f"MarginV={style_params['margin_v']}")
+
+        # FFmpeg command to add subtitles and audio
+        output_with_sub_path = os.path.join(temp_dir, "output_with_sub.mp4")
+
+        # Construct subtitle filter based on whether we have a custom style
+        if custom_style:
+            subtitle_filter = f"subtitles={subtitle_file_path}:force_style='{custom_style}'"
+        else:
+            subtitle_filter = f"subtitles={subtitle_file_path}"
+
+        # Add subtitles first
+        subtitle_cmd = [
+            "ffmpeg",
+            "-i", input_video_path,
+            "-vf", subtitle_filter,
+            "-c:v", FFMPEG_PARAMS["video_codec"],
+            "-preset", FFMPEG_PARAMS["preset"],
+            "-crf", str(FFMPEG_PARAMS["crf"]),
+            "-c:a", "copy",
+            "-y", output_with_sub_path
+        ]
+
+        log_info(f"Running subtitle command: {' '.join(subtitle_cmd)}")
+        subprocess.run(subtitle_cmd, check=True)
+
+        # Then overlay audio
+        audio_cmd = [
+            "ffmpeg",
+            "-i", output_with_sub_path,
+            "-i", audio_file_path,
+            "-c:v", "copy",
+            "-c:a", FFMPEG_PARAMS["audio_codec"],
+            "-map", "0:v:0",
+            "-map", "1:a:0",
+            "-shortest",
+            "-y", output_path
+        ]
+
+        log_info(f"Running audio overlay command: {' '.join(audio_cmd)}")
+        subprocess.run(audio_cmd, check=True)
+
+        return True
     except subprocess.CalledProcessError as e:
-        print(f"Error generating video: {str(e)}")
-        return None
+        log_error(f"Error in video processing: {str(e)}")
+        return False
+    except Exception as e:
+        log_error(f"Unexpected error in video processing: {str(e)}")
+        return False
 
 
 def extend_video(video_path, temp_dir, target_duration, video_duration):
@@ -658,9 +718,6 @@ def ensure_strictly_sequential_subtitles(entries):
 
     # Voice-specific timing adjustments - different TTS engines have slightly different timing characteristics
     VOICE_SYNC_ADJUSTMENTS = {
-        "donald_trump": -0.35,  # Increased lead time for Trump voice
-        "andrew_tate": -0.4,    # Increased lead time for Tate voice
-        "mario": -0.35,         # Increased lead time for Mario voice
         "default": -0.3         # Increased default lead time
     }
 

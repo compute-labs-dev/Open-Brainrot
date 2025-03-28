@@ -10,6 +10,8 @@ services:
     environment:
       - PYTHONUNBUFFERED=1
       - TZ=America/Los_Angeles
+    env_file:
+      - .env
     healthcheck:
       test: [ "CMD", "curl", "-f", "http://localhost:5500/health" ]
       interval: 30s

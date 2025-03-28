@@ -61,9 +61,9 @@ json_text=$(printf '%s' "$text" | jq -R -s '.')
 # Test the generate endpoint with a specific digest_id
 echo -e "${BLUE}Testing generate endpoint with digest_id${NC}"
 test_endpoint "/generate" "POST" "{
-    \"text\": \"This is a test with a specific digest_id\",
+    \"text\": \"Hello there, this is a test of the Brainrot Daily Digest. We are going to be talking about the latest news in the world of AI and Machine Learning. Subscribe to our channel to get more videos like this one!\",
     \"model\": \"o3mini\", 
-    \"voices\": [\"donald_trump\"],
+    \"voices\": [\"donald_trump\", \"walter_cronkite\", \"southpark_eric_cartman\", \"keanu_reeves\", \"fireship\"],
     \"video\": \"minecraft\",
     \"digest_id\": \"bed3b9e4-e6bb-42e8-9a75-2d9075acc3ad\"
 }" "Generating a video with a specific digest_id"
