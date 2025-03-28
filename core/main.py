@@ -575,7 +575,7 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
 """
 
     # Group words into phrases for better readability
-    max_words_per_phrase = 5  # Increased from 3 to 5 for better flow
+    max_words_per_phrase = 6
     print(f"Max words per phrase: {max_words_per_phrase}")
 
     phrases = []

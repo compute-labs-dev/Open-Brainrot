@@ -567,7 +567,7 @@ def generate_subtitles_with_gentle(audio_path, text, temp_dir):
         return []
 
 
-def group_words_into_phrases(word_entries, max_duration=2.5, max_words=4):
+def group_words_into_phrases(word_entries, max_duration=3.5, max_words=6):
     """Group words into phrases for better subtitle display"""
     phrases = []
     current_phrase = []
