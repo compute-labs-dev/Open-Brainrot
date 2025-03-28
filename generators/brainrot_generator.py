@@ -322,9 +322,9 @@ def get_output_paths(content, voice, base_dir="outputs", timestamp=None):
 
 
 def clean_text_for_tts(text):
-    """Enhanced text cleaning for TTS compatibility"""
-    # Remove any remaining non-ASCII characters
-    text = re.sub(r'[^\x00-\x7F]+', '', text)
+    """Enhanced text cleaning for TTS compatibility while preserving apostrophes"""
+    # Remove non-ASCII characters except apostrophes
+    text = ''.join(char for char in text if char.isascii() or char == "'")
 
     # Clean up any extra whitespace
     text = ' '.join(text.split())
@@ -343,7 +343,7 @@ def clean_text_for_tts(text):
     text = re.sub(r'\(cough\)', '', text)
     text = re.sub(r'\(lip-smacking\)', '', text)
 
-    # Clean up punctuation
+    # Clean up punctuation while preserving apostrophes
     text = re.sub(r'\.{2,}', '.', text)  # Replace multiple dots with single
     # Remove space before punctuation
     text = re.sub(r'\s+([.,!?])', r'\1', text)
@@ -549,9 +549,22 @@ Start your broadcast with a dynamic, engaging introduction that:
             if response.status_code == 200:
                 result = response.json()["choices"][0]["message"]["content"]
                 result_length = len(result)
+
+                # Validate response content
+                if not result or not result.strip():
+                    error_msg = f"{voice_context} API returned empty response"
+                    logger.error(error_msg)
+                    if attempt < MAX_RETRIES - 1:
+                        wait_time = RETRY_DELAY
+                        logger.info(
+                            f"{voice_context} Retrying in {wait_time:.1f}s")
+                        time.sleep(wait_time)
+                        continue
+                    raise ValueError(error_msg)
+
                 logger.info(
                     f"{voice_context} Received successful response ({result_length} characters)")
-                return result
+                return result.strip()
             elif response.status_code == 429:  # Rate limit
                 if attempt < MAX_RETRIES - 1:
                     wait_time = (2 ** attempt) * RETRY_DELAY

@@ -258,6 +258,24 @@ def process_voice(voice, text, word_count, digest_id, title, description, model,
         timestamp = int(time.time())
         output_dir = f"outputs/{timestamp}_{voice}"
 
+        # Check if the text transformation was successful
+        transformed_text_path = os.path.join(
+            output_dir, f"Mar_{datetime.now().day}_{datetime.now().year}_Daily_Brainrot_by_{voice.replace('_', ' ').title()}_text.txt")
+        if os.path.exists(transformed_text_path):
+            with open(transformed_text_path, 'r', encoding='utf-8') as f:
+                content = f.read().strip()
+            if not content:
+                logger.error(
+                    f"[{voice}] Text transformation returned empty result")
+                return {
+                    'success': False,
+                    'error': {
+                        'code': 'EMPTY_TRANSFORMATION',
+                        'message': 'Text transformation returned empty result',
+                        'details': 'The AI model returned an empty response when transforming the text. This might be due to API rate limiting or model errors.'
+                    }
+                }
+
         # Pass the timestamp to main for consistent directory naming
         result = main(process_temp_path, llm=False, voice=voice,
                       model=model, video_path=available_video_path,
@@ -287,17 +305,13 @@ def process_voice(voice, text, word_count, digest_id, title, description, model,
             # Use S3 URL for video_url if available, otherwise use local path
             if s3_url:
                 voice_result = {
-                    'voice': voice,
-                    'video_url': s3_url,
-                    'local_path': f'/{relative_path}',
-                    's3_url': s3_url
+                    'success': True,
+                    'video_url': s3_url
                 }
             else:
                 voice_result = {
-                    'voice': voice,
-                    'video_url': f'/{relative_path}',
-                    'local_path': f'/{relative_path}',
-                    's3_url': ""
+                    'success': True,
+                    'video_url': f'/{relative_path}'
                 }
 
             logger.info(f"Video available at: {relative_path}")
@@ -379,14 +393,21 @@ def process_voice(voice, text, word_count, digest_id, title, description, model,
                         f"Error updating video record in Supabase: {str(e)}")
         else:
             logger.error(f"Error: Video file not found at {video_path}")
-            voice_result['error'] = "Video file not found"
+            voice_result = {
+                'success': False,
+                'error': {
+                    'code': 'FILE_NOT_FOUND',
+                    'message': 'Video file not found',
+                    'details': f'The video file was not found at {video_path}'
+                }
+            }
 
             # Try to construct an S3 URL anyway for the expected path
             if S3_BUCKET:
                 expected_basename = os.path.basename(video_path)
                 s3_object_name = f"videos/{expected_basename}"
                 constructed_s3_url = f"https://{S3_BUCKET}.s3.amazonaws.com/{s3_object_name}"
-                voice_result['s3_url'] = constructed_s3_url
+                voice_result['video_url'] = constructed_s3_url
                 logger.info(
                     f"Constructed expected S3 URL despite missing file: {constructed_s3_url}")
             else:
@@ -424,7 +445,14 @@ def process_voice(voice, text, word_count, digest_id, title, description, model,
         }
         logger.error(f"Error generating video: {json.dumps(error_details)}")
 
-        voice_result['error'] = str(e)
+        voice_result = {
+            'success': False,
+            'error': {
+                'code': 'PROCESSING_ERROR',
+                'message': str(e),
+                'details': traceback.format_exc()
+            }
+        }
 
         # Update Supabase status to failed if enabled
         if SUPABASE_ENABLED and local_db and video_id and video_id.startswith('local-') is False:
@@ -512,44 +540,45 @@ def generate():
     # Print what the origin of the request is
     logger.info(f"\n\nOrigin of the request: {request.remote_addr}\n\n")
 
-    # Mock success response
-    return jsonify({
-        "request_id": "req-1743174801",
-        "results": {
-            "donald_trump": {
-                "local_path": "/outputs/1743174801_donald_trump/Mar_28_2025_Daily_Brainrot_by_Donald_Trump_final.mp4",
-                "s3_url": "https://ai-digest-bot.s3.amazonaws.com/videos/Mar_28_2025_Daily_Brainrot_by_Donald_Trump_final.mp4",
-                "video_url": "https://ai-digest-bot.s3.amazonaws.com/videos/Mar_28_2025_Daily_Brainrot_by_Donald_Trump_final.mp4",
-                "voice": "donald_trump"
-            },
-            "fireship": {
-                "local_path": "/outputs/1743174801_fireship/Mar_28_2025_Daily_Brainrot_by_Fireship_final.mp4",
-                "s3_url": "https://ai-digest-bot.s3.amazonaws.com/videos/Mar_28_2025_Daily_Brainrot_by_Fireship_final.mp4",
-                "video_url": "https://ai-digest-bot.s3.amazonaws.com/videos/Mar_28_2025_Daily_Brainrot_by_Fireship_final.mp4",
-                "voice": "fireship"
-            },
-            "keanu_reeves": {
-                "local_path": "/outputs/1743174801_keanu_reeves/Mar_28_2025_Daily_Brainrot_by_Keanu_Reeves_final.mp4",
-                "s3_url": "https://ai-digest-bot.s3.amazonaws.com/videos/Mar_28_2025_Daily_Brainrot_by_Keanu_Reeves_final.mp4",
-                "video_url": "https://ai-digest-bot.s3.amazonaws.com/videos/Mar_28_2025_Daily_Brainrot_by_Keanu_Reeves_final.mp4",
-                "voice": "keanu_reeves"
-            },
-            "southpark_eric_cartman": {
-                "local_path": "/outputs/1743174801_southpark_eric_cartman/Mar_28_2025_Daily_Brainrot_by_Southpark_Eric_Cartman_final.mp4",
-                "s3_url": "https://ai-digest-bot.s3.amazonaws.com/videos/Mar_28_2025_Daily_Brainrot_by_Southpark_Eric_Cartman_final.mp4",
-                "video_url": "https://ai-digest-bot.s3.amazonaws.com/videos/Mar_28_2025_Daily_Brainrot_by_Southpark_Eric_Cartman_final.mp4",
-                "voice": "southpark_eric_cartman"
-            },
-            "walter_cronkite": {
-                "local_path": "/outputs/1743174801_walter_cronkite/Mar_28_2025_Daily_Brainrot_by_Walter_Cronkite_final.mp4",
-                "s3_url": "https://ai-digest-bot.s3.amazonaws.com/videos/Mar_28_2025_Daily_Brainrot_by_Walter_Cronkite_final.mp4",
-                "video_url": "https://ai-digest-bot.s3.amazonaws.com/videos/Mar_28_2025_Daily_Brainrot_by_Walter_Cronkite_final.mp4",
-                "voice": "walter_cronkite"
-            }
-        },
-        "success": 0,
-        "digestId": "ecb5b529-68e0-4656-a380-754825b1632f"
-    })
+    # # Mock response with both success and error examples
+    # return jsonify({
+    #     "request_id": "req-1743174801",
+    #     "results": {
+    #         "donald_trump": {
+    #             "success": True,
+    #             "video_url": "https://ai-digest-bot.s3.amazonaws.com/videos/Mar_28_2025_Daily_Brainrot_by_Donald_Trump_final.mp4",
+    #             "subtitle_url": "/outputs/1743174801_donald_trump/Mar_28_2025_Daily_Brainrot_by_Donald_Trump_final.ass"
+    #         },
+    #         "fireship": {
+    #             "success": False,
+    #             "error": {
+    #                 "code": "FILE_NOT_FOUND",
+    #                 "message": "Video file not found",
+    #                 "details": "The generated video file could not be found at the expected location"
+    #             }
+    #         },
+    #         "keanu_reeves": {
+    #             "success": True,
+    #             "video_url": "https://ai-digest-bot.s3.amazonaws.com/videos/Mar_28_2025_Daily_Brainrot_by_Keanu_Reeves_final.mp4",
+    #             "subtitle_url": "/outputs/1743174801_keanu_reeves/Mar_28_2025_Daily_Brainrot_by_Keanu_Reeves_final.ass"
+    #         },
+    #         "southpark_eric_cartman": {
+    #             "success": False,
+    #             "error": {
+    #                 "code": "PROCESSING_ERROR",
+    #                 "message": "Failed to process video",
+    #                 "details": "An error occurred during video generation: FFmpeg encoding failed"
+    #             }
+    #         },
+    #         "walter_cronkite": {
+    #             "success": True,
+    #             "video_url": "https://ai-digest-bot.s3.amazonaws.com/videos/Mar_28_2025_Daily_Brainrot_by_Walter_Cronkite_final.mp4",
+    #             "subtitle_url": "/outputs/1743174801_walter_cronkite/Mar_28_2025_Daily_Brainrot_by_Walter_Cronkite_final.ass"
+    #         }
+    #     },
+    #     "success": 1,
+    #     "digestId": "ecb5b529-68e0-4656-a380-754825b1632f"
+    # })
 
     data = request.get_json()
     text = data.get('text', '')
